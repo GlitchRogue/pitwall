@@ -1253,7 +1253,10 @@ button, input { font-family: inherit; }
       setTimeout(function () { try { window.speechSynthesis.speak(u); } catch (e) { /* ignore */ } }, 250);
     } catch (e) { /* ignore */ }
   }
-  function biteTick(dtSec) {
+  var biteLast = 0;
+  /* wall clock based so it keeps counting in a background tab, where animation frames stop */
+  function biteTick() {
+    var now = Date.now(), dtSec = biteLast ? Math.min(3, (now - biteLast) / 1000) : 0; biteLast = now;
     if (!(cfg.sound && cfg.sBites) || !S.running || S.phase !== 'focus' || S.starting) return;
     biteClock += dtSec;
     if (biteClock >= biteTarget) { biteClock = 0; biteTarget = (5 + Math.random() * 5) * 60; playBite(); }
@@ -1875,7 +1878,7 @@ button, input { font-family: inherit; }
       if (TAB === 'strategy') renderStrategy();
     }
   }
-  setInterval(tick, 500);
+  setInterval(function () { tick(); biteTick(); }, 500);
   requestAnimationFrame(frame);
 
 })();
