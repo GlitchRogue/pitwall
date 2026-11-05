@@ -1257,7 +1257,7 @@ button, input { font-family: inherit; }
   var biteLast = 0;
   /* wall clock based so it keeps counting in a background tab, where animation frames stop */
   function biteTick() {
-    var now = Date.now(), dtSec = biteLast ? Math.min(3, (now - biteLast) / 1000) : 0; biteLast = now;
+    var now = Date.now(), dtSec = biteLast ? Math.min(300, (now - biteLast) / 1000) : 0; biteLast = now;
     if (!(cfg.sound && cfg.sBites) || !S.running || S.phase !== 'focus' || S.starting) return;
     biteClock += dtSec;
     if (biteClock >= biteTarget) { biteClock = 0; biteTarget = (5 + Math.random() * 5) * 60; playBite(); }
