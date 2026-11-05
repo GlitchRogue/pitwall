@@ -402,6 +402,7 @@ button, input { font-family: inherit; }
             <label for="o_sRadio"><input id="o_sRadio" type="checkbox"> Team radio beeps</label>
             <label for="o_sBites"><input id="o_sBites" type="checkbox"> Radio soundbites (random, every 5 to 10 min)</label>
             <button class="btn ghost" id="btnTestBite" type="button">Play a radio clip now</button>
+            <p class="note" id="soundStatus"></p>
           </div>
         </section>
       </div>
@@ -1171,6 +1172,7 @@ button, input { font-family: inherit; }
   function playSamp(name, vol, delay) {
     var b = SAMP[name]; if (!b || !audioCtx) return false;
     try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
       var s = audioCtx.createBufferSource(), g = audioCtx.createGain(); s.buffer = b; g.gain.value = vol || 0.8;
       s.connect(g); g.connect(audioCtx.destination); s.start(audioCtx.currentTime + (delay || 0)); lastSrc = s;
     } catch (e) { return false; }
@@ -1234,6 +1236,14 @@ button, input { font-family: inherit; }
       'Hold position, we are managing the tyres.'
     ];
     return lines[Math.floor(Math.random() * lines.length)];
+  }
+  function soundStatus() {
+    if (!cfg.sound) return 'Sounds are off.';
+    var n = 0; BITES.forEach(function (f, i) { if (SAMP['bite' + i]) n++; });
+    var clips = SAMP.lights ? 'Your sound files are loaded (' + n + ' radio clips).' : 'Using built in beeps, no sound files found yet.';
+    if (!cfg.sBites) return clips;
+    var left = Math.max(0, Math.ceil((biteTarget - biteClock) / 60));
+    return clips + (S.running && S.phase === 'focus' ? ' Next radio clip in about ' + left + ' min.' : ' The radio clip timer runs while a stint is running.');
   }
   function playBite() {
     if (!on('sBites')) return;
@@ -1880,7 +1890,7 @@ button, input { font-family: inherit; }
       if (TAB === 'strategy') renderStrategy();
     }
   }
-  setInterval(function () { tick(); biteTick(); }, 500);
+  setInterval(function () { tick(); biteTick(); setText($('soundStatus'), soundStatus()); }, 500);
   requestAnimationFrame(frame);
 
 })();
