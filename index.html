@@ -401,6 +401,7 @@ button, input { font-family: inherit; }
             <label for="o_sPit"><input id="o_sPit" type="checkbox"> Pit stop sounds</label>
             <label for="o_sRadio"><input id="o_sRadio" type="checkbox"> Team radio beeps</label>
             <label for="o_sBites"><input id="o_sBites" type="checkbox"> Radio soundbites (random, every 5 to 10 min)</label>
+            <button class="btn ghost" id="btnTestBite" type="button">Play a radio clip now</button>
           </div>
         </section>
       </div>
@@ -1838,6 +1839,7 @@ button, input { font-family: inherit; }
   ['inRace', 'inPit', 'inLong', 'inEvery'].forEach(function (id) { $(id).addEventListener('change', onField); });
   $('optAuto').addEventListener('change', function () { cfg.auto = $('optAuto').checked; save(); });
   $('optSound').addEventListener('change', function () { cfg.sound = $('optSound').checked; ensureAudio(); syncSettings(); save(); });
+  $('btnTestBite').addEventListener('click', function () { var was = cfg.sound && cfg.sBites; if (!was) { setText($('btnTestBite'), 'Turn on Sounds and Radio soundbites first'); return; } ensureAudio(); setTimeout(playBite, 300); });
   var firstAudio = function () { if (cfg.sound) ensureAudio(); document.removeEventListener('pointerdown', firstAudio); document.removeEventListener('keydown', firstAudio); };
   document.addEventListener('pointerdown', firstAudio); document.addEventListener('keydown', firstAudio);
   ['sLights', 'sPit', 'sRadio', 'sBites'].forEach(function (k) {
