@@ -301,8 +301,7 @@ button, input { font-family: inherit; }
 
       <div class="controls">
         <button class="btn primary" id="btnStart" type="button">Start race</button>
-        <button class="btn" id="btnBox" type="button">Red flag now</button>
-        <button class="btn" id="btnLeave" type="button" hidden>Restart race</button>
+        <button class="btn" id="btnLeave" type="button" hidden>Skip break</button>
         <button class="btn" id="btnReset" type="button">New season</button>
       </div>
 
@@ -313,7 +312,7 @@ button, input { font-family: inherit; }
         <div class="cell"><small>Team points</small><strong id="sPts">0</strong></div>
         <div class="cell"><small>Credits</small><strong id="sCred">0</strong></div>
       </div>
-      <p class="hint">Run your stint, then take the break: the race goes red flag and your pit wall opens. Change tyres, engine mode and aero for the next stint, spend credits on R&amp;D, then restart. Laps take about the real lap record time and cars are drawn to scale. A race is about 90 minutes: red flag breaks are your pit stops, and the cars drive into and out of the pit lane. Keys: Space start or pause, B red flag, 1 2 3 camera.</p>
+      <p class="hint">Run your study session, then the cars pit for your break: the race goes red flag, the cars drive into the pit lane and your pit wall opens. Change tyres, engine mode and aero for the next stint, spend credits on R&amp;D, or skip the break to restart early. Laps take about the real lap record time and cars are drawn to scale. Keys: Space start or pause, 1 2 3 camera.</p>
     </section>
 
     <aside class="side" aria-label="Pit wall">
@@ -400,7 +399,8 @@ button, input { font-family: inherit; }
             <label for="o_sLights"><input id="o_sLights" type="checkbox"> Start light beeps</label>
             <label for="o_sPit"><input id="o_sPit" type="checkbox"> Pit stop sounds</label>
             <label for="o_sRadio"><input id="o_sRadio" type="checkbox"> Team radio beeps</label>
-            <label for="o_sBites"><input id="o_sBites" type="checkbox"> Radio soundbites (random, every 5 to 10 min)</label>
+            <label for="o_sBites"><input id="o_sBites" type="checkbox"> Radio clips (random, you pick how often)</label>
+            <label class="field" for="inBite">Radio clip about every (min)<input id="inBite" type="number" min="1" max="30" step="1" inputmode="numeric"></label>
             <button class="btn ghost" id="btnTestBite" type="button">Play a radio clip now</button>
             <p class="note" id="soundStatus"></p>
           </div>
@@ -489,7 +489,7 @@ button, input { font-family: inherit; }
   var POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 
   var LS_KEY = 'pitwall.v3';
-  var cfg = { team: 'ferrari', circuit: 'it-1922', preset: 'twostop', race: 90, every: 3, pit: 5, long: 15, auto: true, sound: true, sLights: true, sPit: true, sRadio: true, sBites: true, cam: 'map', v: 4 };
+  var cfg = { team: 'ferrari', circuit: 'it-1922', preset: 'twostop', race: 90, every: 3, pit: 5, long: 15, auto: true, sound: true, sLights: true, sPit: true, sRadio: true, sBites: true, bite: 4, cam: 'map', v: 4 };
   var season = { round: 0, startIdx: 0, pts: {}, credits: 0, up: { pu: 0, aero: 0, rel: 0, tyre: 0, fc: 0 }, results: [] };
   var day = { date: dayKey(), stints: 0, gps: 0 };
 
@@ -515,6 +515,7 @@ button, input { font-family: inherit; }
   load();
   if (savedV < 4) { cfg.race = 90; cfg.every = 3; cfg.pit = 5; cfg.long = 15; cfg.preset = 'twostop'; cfg.v = 4; }
   cfg.race = clamp(Math.round(Number(cfg.race) || 90), 10, 240); cfg.every = clamp(Math.round(Number(cfg.every) || 3), 1, 5);
+  cfg.bite = clamp(Math.round(Number(cfg.bite) || 4), 1, 30);
   cfg.pit = clamp(Math.round(Number(cfg.pit) || 5), 1, 60); cfg.long = clamp(Math.round(Number(cfg.long) || 15), 1, 120);
   if (['map', 'chase', 'close'].indexOf(cfg.cam) < 0) cfg.cam = 'map';
 
@@ -1028,7 +1029,7 @@ button, input { font-family: inherit; }
             radio(car.code + ' is out with a mechanical failure.', mine); if (mine) ev('crash');
           }
         } else if (m === 'toPit' && Math.floor((car.D + START_D) / L) > k0) {
-          car.mode = 'laneIn'; car.u = 0; car.v = Math.min(car.v, 30);
+          car.mode = 'laneIn'; car.u = 0; car.v = Math.min(car.v, 30); if (mine) ev('pitin');
         }
       } else if (m === 'laneIn') {
         var dist = (car.slotU - car.u) * MPP, vt = dist < 0.3 ? 0 : Math.min(PIT_V, Math.max(1.5, Math.sqrt(2 * 5 * dist)));
@@ -1160,7 +1161,7 @@ button, input { font-family: inherit; }
     } catch (e) { /* ignore */ }
   }
   function loadSamples() {
-    ['lights', 'radio', 'radioend'].forEach(function (n) { loadBuf(n, 'sounds/' + n + '.mp3'); });
+    ['lights', 'radio', 'radioend', 'pit'].forEach(function (n) { loadBuf(n, 'sounds/' + n + '.mp3'); });
     try {
       fetch('sounds/bites.json').then(function (r) { if (!r.ok) throw new Error('no'); return r.json(); }).then(function (list) {
         BITES = (Array.isArray(list) ? list : []).slice(0, 40);
@@ -1203,14 +1204,15 @@ button, input { font-family: inherit; }
   function sfxLight() { if (!on('sLights') || SAMP.lights) return; if (!playSamp('lights', 0.8)) { tone(0, 1000, 0.22, 0.16, 'square'); tone(0, 500, 0.22, 0.08, 'sine'); } }
   function sfxGo() { if (!on('sLights') || SAMP.lights) return; if (!playSamp('go', 0.8)) noise(0, 0.35, 180, 0.5, 0.6); }
   /* pit sounds: air gun on each wheel, jack drop */
+  var lastBox = 0;
+  function sfxBox() { var n = Date.now(); if (!on('sPit') || n - lastBox < 4000) return; lastBox = n; playSamp('pit', 0.9); }
   function sfxPitIn() {
-    if (!on('sPit')) return;
-    if (playSamp('pit', 0.8)) return;
+    if (!on('sPit') || SAMP.pit) return;
     [0.6, 0.95, 1.3, 1.65].forEach(function (t) { noise(t, 0.09, 2600, 0.5, 3); noise(t, 0.05, 900, 0.3, 2); });
     noise(2.3, 0.15, 120, 0.8, 0.8);
   }
   function sfxPitOut() { if (!on('sPit')) return; noise(0, 0.9, 900, 0.35, 0.5); [0, 0.15].forEach(function (t) { noise(t, 0.06, 2600, 0.4, 3); }); }
-  function sfxSiren() { if (!on('sPit')) return; [880, 660, 880, 660].forEach(function (f, i) { tone(i * 0.2, f, 0.18, 0.12, 'square'); }); }
+  function sfxSiren() { if (!on('sPit') || SAMP.pit) return; [880, 660, 880, 660].forEach(function (f, i) { tone(i * 0.2, f, 0.18, 0.12, 'square'); }); }
   function sfxChequer() { if (!on('sPit')) return; [784, 988, 1175, 1568].forEach(function (f, i) { tone(i * 0.2, f, 0.2, 0.12, 'square'); }); }
   function sfxCrash() { if (!on('sPit')) return; noise(0, 0.5, 300, 0.9, 0.7); noise(0.05, 0.25, 1400, 0.4, 1); }
   /* team radio: squelch, then the roger beep */
@@ -1223,7 +1225,9 @@ button, input { font-family: inherit; }
     noise(d, 0.12, 2200, 0.35, 1.2); tone(d + 0.1, 1500, 0.07, 0.12, 'square'); tone(d + 0.2, 1100, 0.07, 0.12, 'square');
   }
   /* an occasional soundbite while you race, every 10 to 20 minutes: your own recordings if you added some, otherwise an engineer on the radio */
-  var biteClock = 0, biteTarget = (5 + Math.random() * 5) * 60;
+  function biteGap() { return cfg.bite * 60 * (0.75 + Math.random() * 0.5); }
+  var biteClock = 0, biteTarget = biteGap();
+  function nextBiteSoon() { biteClock = 0; biteTarget = biteGap(); }
   function engineerLine() {
     var me = pairTyre(), arr = classify(), i = arr.indexOf(me), ahead = i > 0 ? arr[i - 1] : null, gap = ahead ? ((ahead.D - me.D) * MPP / VREF).toFixed(1) : '0';
     var lines = [
@@ -1270,14 +1274,13 @@ button, input { font-family: inherit; }
     var now = Date.now(), dtSec = biteLast ? Math.min(300, (now - biteLast) / 1000) : 0; biteLast = now;
     if (!(cfg.sound && cfg.sBites) || !S.running || S.phase !== 'focus' || S.starting) return;
     biteClock += dtSec;
-    if (biteClock >= biteTarget) { biteClock = 0; biteTarget = (5 + Math.random() * 5) * 60; playBite(); }
+    if (biteClock >= biteTarget) { biteClock = 0; biteTarget = biteGap(); playBite(); }
   }
   /* sounds for things that happened in the sim */
   function drainEvents() {
     var q = R.ev.splice(0, R.ev.length);
-    if (document.hidden) return;
     q.slice(-4).forEach(function (e) {
-      if (e.t === 'park') sfxPitIn(); else if (e.t === 'leave') sfxPitOut(); else if (e.t === 'crash') sfxCrash();
+      if (e.t === 'pitin') sfxBox(); else if (e.t === 'park') sfxPitIn(); else if (e.t === 'leave') sfxPitOut(); else if (e.t === 'crash') sfxCrash();
     });
   }
 
@@ -1359,12 +1362,14 @@ button, input { font-family: inherit; }
     S.phase = 'pit'; S.dur = phaseDur('pit'); S.remaining = S.dur; segmentSync(0); startRF(false); run();
     sfxSiren(); radio('Red flag called by the pit wall.', true); save();
   }
+  var SKIP_MS = 25000; /* time the cars need to drive out after a skipped break */
   function leavePits() {
     if (S.phase === 'focus') return;
     ensureAudio();
     if (S.phase === 'pit') {
+      advanceSim();
       if (!R.rf.released) R.rf.relAt = Math.min(R.rf.relAt, R.simT);
-      if (getRem() > 45000) { S.remaining = 45000; if (S.running) S.endAt = Date.now() + 45000; }
+      if (getRem() > SKIP_MS) { S.remaining = SKIP_MS; if (S.running) S.endAt = Date.now() + SKIP_MS; segmentSync(simElapsed()); }
     } else if (getRem() > 1500) { S.remaining = 1500; if (S.running) S.endAt = Date.now() + 1500; }
     if (!S.running) run();
   }
@@ -1624,9 +1629,8 @@ button, input { font-family: inherit; }
     var lbl = S.starting ? 'Cancel start' : S.running ? 'Pause' : isFresh() ? (S.phase === 'focus' ? (S.done === 0 && !S.stash ? 'Start race' : 'Restart race') : 'Start break') : 'Resume';
     setText($('btnStart'), lbl);
     var inFocus = S.phase === 'focus';
-    if ($('btnBox').hidden === inFocus) $('btnBox').hidden = !inFocus;
     if ($('btnLeave').hidden === !inFocus) $('btnLeave').hidden = inFocus;
-    setText($('btnLeave'), S.phase === 'longpit' ? 'Next Grand Prix' : 'Restart race');
+    setText($('btnLeave'), S.phase === 'longpit' ? 'Skip to next Grand Prix' : 'Skip break');
     $('bnRed').classList.toggle('on', S.phase === 'pit');
     $('bnChq').classList.toggle('on', S.phase === 'longpit');
     setText($('bnWx'), WX[curWx()] + ' track');
@@ -1717,7 +1721,7 @@ button, input { font-family: inherit; }
     lock.textContent = '';
     var b = el('b', '', open ? 'Strategy window open. ' : 'Pit wall locked. ');
     lock.appendChild(b);
-    lock.appendChild(document.createTextNode(open ? 'Your choices take effect when the cars leave the pit lane.' : (S.phase === 'pit' ? 'Cars are leaving the pit lane.' : 'Strategy can only change during a red flag. Press Red flag now, or wait for the end of the stint.')));
+    lock.appendChild(document.createTextNode(open ? 'Your choices take effect when the cars leave the pit lane.' : (S.phase === 'pit' ? 'Cars are leaving the pit lane.' : 'Strategy opens when the cars pit at the end of each study session.')));
     var j = Math.min(R.fc.length - 1, S.done), p = R.fc[j] || [1, 0, 0], i, bi = 0;
     for (i = 0; i < 3; i++) { ST['fc' + i].s.textContent = Math.round(p[i] * 100) + '%'; ST['fc' + i].u.style.width = Math.round(p[i] * 100) + '%'; if (p[i] > p[bi]) bi = i; }
     $('fcline').textContent = '';
@@ -1810,7 +1814,7 @@ button, input { font-family: inherit; }
     else $('tileNote').textContent = 'Switching to ' + c.loc + ' after this Grand Prix.';
   }
   function syncSettings() {
-    $('inRace').value = cfg.race; $('inPit').value = cfg.pit; $('inLong').value = cfg.long; $('inEvery').value = cfg.every;
+    $('inBite').value = cfg.bite; $('inRace').value = cfg.race; $('inPit').value = cfg.pit; $('inLong').value = cfg.long; $('inEvery').value = cfg.every;
     $('optAuto').checked = !!cfg.auto; $('optSound').checked = !!cfg.sound;
     ['sLights', 'sPit', 'sRadio', 'sBites'].forEach(function (k) { $('o_' + k).checked = !!cfg[k]; $('o_' + k).disabled = !cfg.sound; });
     var i, sl = cfg.race / cfg.every;
@@ -1831,6 +1835,7 @@ button, input { font-family: inherit; }
     if (cfg.race !== oldRace || cfg.every !== oldEvery) { var sl = cfg.race / cfg.every; cfg.pit = sl >= 40 ? 10 : sl >= 25 ? 5 : 3; }
     cfg.pit = readInput('inPit', 1, 60, cfg.pit) === cfg.pit ? cfg.pit : readInput('inPit', 1, 60, cfg.pit);
     cfg.long = readInput('inLong', 1, 120, cfg.long);
+    var ob = cfg.bite; cfg.bite = readInput('inBite', 1, 30, cfg.bite); if (cfg.bite !== ob) nextBiteSoon();
     settingsChanged();
   }
   function settingsChanged() {
@@ -1846,7 +1851,7 @@ button, input { font-family: inherit; }
   if (!hadSaved && window.innerWidth < 600) cfg.cam = 'chase';
   if (season.round === 0) season.startIdx = Math.max(0, CIRCUITS.indexOf(CUR));
   newGP(); syncSettings(); syncTiles(); renderStand(); setTab('race');
-  ['inRace', 'inPit', 'inLong', 'inEvery'].forEach(function (id) { $(id).addEventListener('change', onField); });
+  ['inRace', 'inPit', 'inLong', 'inEvery', 'inBite'].forEach(function (id) { $(id).addEventListener('change', onField); });
   $('optAuto').addEventListener('change', function () { cfg.auto = $('optAuto').checked; save(); });
   $('optSound').addEventListener('change', function () { cfg.sound = $('optSound').checked; ensureAudio(); syncSettings(); save(); });
   $('btnTestBite').addEventListener('click', function () { var was = cfg.sound && cfg.sBites; if (!was) { setText($('btnTestBite'), 'Turn on Sounds and Radio soundbites first'); return; } ensureAudio(); setTimeout(playBite, 300); });
@@ -1859,7 +1864,6 @@ button, input { font-family: inherit; }
     });
   });
   $('btnStart').addEventListener('click', startRace);
-  $('btnBox').addEventListener('click', boxNow);
   $('btnLeave').addEventListener('click', leavePits);
   $('btnReset').addEventListener('click', resetSeason);
   Array.prototype.forEach.call($('cam').children, function (b) { b.addEventListener('click', function () { setCam(b.dataset.cam); }); });
@@ -1868,7 +1872,6 @@ button, input { font-family: inherit; }
     var tag = e.target && e.target.tagName;
     if (tag === 'INPUT' || tag === 'BUTTON' || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.code === 'Space') { e.preventDefault(); startRace(); }
-    else if (e.key === 'b' || e.key === 'B') boxNow();
     else if (e.key === '1') setCam('map'); else if (e.key === '2') setCam('chase'); else if (e.key === '3') setCam('close');
   });
   if (window.ResizeObserver) new ResizeObserver(resize).observe($('wrap')); else window.addEventListener('resize', resize);
@@ -1890,7 +1893,7 @@ button, input { font-family: inherit; }
       if (TAB === 'strategy') renderStrategy();
     }
   }
-  setInterval(function () { tick(); biteTick(); setText($('soundStatus'), soundStatus()); }, 500);
+  setInterval(function () { tick(); if (document.hidden) { advanceSim(); drainEvents(); } biteTick(); setText($('soundStatus'), soundStatus()); }, 500);
   requestAnimationFrame(frame);
 
 })();
