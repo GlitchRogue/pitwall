@@ -785,6 +785,7 @@ button, input { font-family: inherit; }
     for (var it = 0; it < 22; it++) { mid = (lo + hi) / 2; res = lapFrom(sm, mid, 1); if (res.t > target) lo = mid; else hi = mid; }
     for (var ai = 0; ai < 3; ai++) { var r2 = lapFrom(sm, mid, ai); PROF[ai] = r2.v; LAPT[ai] = r2.t; }
     VREF = CUR.len / LAPT[1];
+    buildLine(kap, sm);
   }
   /* speed in m/s on the profile for aero index ai at physical track distance s */
   function profSpeed(ai, s) {
@@ -967,7 +968,7 @@ button, input { font-family: inherit; }
     return p;
   }
   function paceOf(car, wx) {
-    return basePace(car) + CI[car.tyre.c].tp[wx] - wearPen(car.tyre.w) + ENGS[car.eng].pace;
+    return basePace(car) + CI[car.tyre.c].tp[wx] - wearPen(car.tyre.w) + ENGS[car.eng].pace - (car.dmg || 0);
   }
 
   /* ---------- Grand Prix setup ---------- */
@@ -1161,7 +1162,7 @@ button, input { font-family: inherit; }
       if (car.out) { car.v = Math.max(0, car.v - 30 * dt); car.D += car.v * dt / MPP; continue; }
       var m = car.mode, mine = isMine(car);
       if (m === 'race' || m === 'toPit' || m === 'rolling') {
-        var s = physS(car), tgt = profSpeed(car.aero, s) * (1 + paceOf(car, wx));
+        var s = physS(car), tgt = profSpeed(car.aero, s + (m === 'race' ? (car.sh || 0) : 0)) * (1 + paceOf(car, wx));
         if (m !== 'toPit') { tgt *= (car.sm || 1); if (car.lim != null && car.lim < tgt) tgt = car.lim; }
         if (m === 'toPit') {
           var dEnt = ((L - (((s % L) + L) % L)) % L) * MPP;
@@ -1199,109 +1200,15 @@ button, input { font-family: inherit; }
         car.D = rf.Dref + car.u * E / PIT.len;
         if (car.u >= PIT.len) { car.mode = 'rolling'; car.D = rf.Dref + E; car.u = 0; }
       }
-      car.lat += clamp(car.latT - car.lat, -latMax, latMax);
+      if (m === 'race' || m === 'rolling') {
+        /* smooth steering: aim for the target with a limited sideways speed and acceleration, so moves have weight */
+        var lv = car.latV || 0, dv = clamp((car.latT - car.lat) * 1.9, -m2p(2.3), m2p(2.3));
+        lv += clamp(dv - lv, -m2p(6) * dt, m2p(6) * dt);
+        car.lat += lv * dt; car.latV = lv;
+      } else { car.lat += clamp(car.latT - car.lat, -latMax, latMax); car.latV = 0; }
     }
   }
-  /* ---------- wheel to wheel racing: slipstream, dirty air, DRS, attack and defend, no driving through each other ---------- */
-  var CAR_LEN_M = 5.7, MIN_GAP_M = 7.0;
-  function inDrsZone(s) {
-    var sm = ((s % L) + L) % L;
-    for (var z = 0; z < DRS_S.length; z++) if (sm >= DRS_S[z][0] && sm <= DRS_S[z][1]) return z;
-    return -1;
-  }
-  function sortedRacers() {
-    var idx = [], cars = R.cars, i;
-    for (i = 0; i < cars.length; i++) {
-      var c = cars[i];
-      if (!c.hidden && !c.out && (c.mode === 'race' || c.mode === 'rolling')) { c.sk = ((physS(c) % L) + L) % L; idx.push(c); }
-    }
-    idx.sort(function (a, b) { return a.sk - b.sk; });
-    return idx;
-  }
-  function aheadM(c, o) { return (((o.sk - c.sk) % L) + L) % L * MPP; }
-  function battle(dt) {
-    var idx = sortedRacers(), cnt = idx.length, i, j, wet = (R.wx[Math.min(R.wx.length - 1, R.stintIdx)] || 0) === 2, grid = R.simT < 8 && R.raceT < 8;
-    for (i = 0; i < cnt; i++) {
-      var c = idx[i], race = c.mode === 'race', sraw = profSpeed(c.aero, physS(c)), sm = 1, lim = 1e9, o1 = null, g1 = 1e9, blocked = false;
-      if (c.ph === undefined) c.ph = (hashStr(c.code) % 628) / 100;
-      for (j = 1; j <= 3 && cnt > 3; j++) {
-        var o = idx[(i + j) % cnt], gm = aheadM(c, o);
-        if (gm > 60) break;
-        if (j === 1) { o1 = o; g1 = gm; }
-        if (Math.abs(o.lat - c.lat) < m2p(2.1)) {
-          lim = Math.min(lim, o.v + (gm - MIN_GAP_M) * 0.8);
-          if (gm < 40) blocked = true;
-        }
-      }
-      var tg = o1 ? g1 / Math.max(c.v, 25) : 9;
-      /* slipstream on the straights, dirty air in the corners */
-      if (o1 && race) {
-        if (sraw > 70) { if (tg < 0.8) sm *= 1 + 0.012 * (1 - tg / 0.8); }
-        else if (tg < 0.5) sm *= 1 - 0.012 * (1 - tg / 0.5);
-      }
-      /* DRS: detected within a second at the start of the zone, open for the whole zone, never in the wet */
-      var z = race ? inDrsZone(physS(c)) : -1;
-      if (z >= 0 && c.zone !== z) {
-        c.zone = z;
-        c.drsOk = !wet && c.D / L >= 2 && R.raceT > 30 && o1 && g1 / Math.max(c.v, 30) < 1.0;
-      } else if (z < 0) { c.zone = -1; c.drsOk = false; }
-      c.drs = !!(z >= 0 && c.drsOk);
-      if (c.drs) sm *= 1.028;
-      sm *= 1 + 0.0016 * Math.sin(R.simT * 0.045 + c.ph);
-      if (race && sraw < 75 && Math.abs(c.lat) > m2p(1.5)) sm *= 0.985; /* off the racing line in a corner */
-      c.sm = sm; c.lim = lim;
-      if (!race) { if (!grid) c.latT = 0; continue; }
-      if (grid) { continue; }
-      /* attack: pull out to the side when held up by a slower or equal car, and go for the gap */
-      if (c.cool > 0) c.cool -= dt;
-      if (c.defCool > 0) c.defCool -= dt;
-      var atk = c.atk, want = 0;
-      if (!atk && o1 && blocked && g1 < Math.max(30, c.v * 0.5) && !(c.cool > 0) && !(c.noAtk && c.noAtk.car === o1 && c.noAtk.t > 0)) {
-        var adv = sraw * (1 + paceOf(c, R.wx[Math.min(R.wx.length - 1, R.stintIdx)] || 0)) * sm - o1.v;
-        var p = (c.drs ? 0.95 : 0.35) * clamp(0.5 + adv / 2.5, 0.15, 1);
-        c.dec = (c.dec || 0) - dt;
-        if (c.dec <= 0) {
-          c.dec = 0.6;
-          if (R.rnd() < p * 0.45) {
-            var side = Math.abs(o1.lat) > m2p(1) ? (o1.lat > 0 ? -1 : 1) : (R.rnd() < 0.5 ? 1 : -1);
-            c.atk = atk = { o: o1, side: side, t: 0 };
-          } else c.cool = 1.5 + R.rnd() * 3;
-        }
-      }
-      if (atk) {
-        atk.t += dt;
-        var d = ((atk.o.sk - c.sk + L / 2 + L) % L - L / 2) * MPP;
-        if (atk.o.hidden || atk.o.out || d < -9 || d > 70 || atk.t > 16) {
-          if (d < -9 && atk.o.mode === 'race') atk.o.noAtk = { car: c, t: 14 + R.rnd() * 16 };
-          c.cool = d < -9 ? 3 : 4 + R.rnd() * 6; c.atk = atk = null;
-        } else want = atk.side * m2p(3.0);
-      }
-      /* defend: move across once to cover the side the car behind is attacking */
-      if (!atk) {
-        var chase = null;
-        for (j = 1; j <= 3 && cnt > 3; j++) { var b = idx[(i - j + cnt) % cnt]; if (b.atk && b.atk.o === c && aheadM(b, c) < 28) { chase = b; break; } }
-        if (chase && !(c.defCool > 0)) {
-          if (!c.def) c.def = (R.rnd() < 0.45) ? { side: chase.atk.side, t: 0 } : { side: 0, t: 0 };
-          c.def.t += dt;
-          if (c.def.t > 3.5) { c.def = null; c.defCool = 9; } else want = c.def.side * m2p(2.4);
-        } else if (c.def) { c.def = null; c.defCool = 6; }
-      }
-      if (c.noAtk) { c.noAtk.t -= dt; if (c.noAtk.t <= 0) c.noAtk = null; }
-      c.latT = want;
-    }
-  }
-  /* hard stop on driving through a car that shares the same bit of road */
-  function separate() {
-    var idx = sortedRacers(), cnt = idx.length, i, j;
-    if (cnt < 4) return;
-    for (i = 0; i < cnt; i++) {
-      var c = idx[i];
-      for (j = 1; j <= 2; j++) {
-        var o = idx[(i + j) % cnt], gm = aheadM(c, o);
-        if (gm < CAR_LEN_M + 0.5 && Math.abs(o.lat - c.lat) < m2p(1.9)) { c.D -= (CAR_LEN_M + 0.5 - gm) / MPP; if (c.v > o.v) c.v = o.v; }
-      }
-    }
-  }
+  /* wheel to wheel racing lives in p5b-drivers.js */
   function simElapsed() { return (S.dur - getRem()) / 1000; }
   function advanceSim(force) {
     if (S.starting) return;
@@ -1367,6 +1274,242 @@ button, input { font-family: inherit; }
     if (season.complete) {
       var ch = TEAMS.slice().sort(function (a, b) { return (season.pts[b.id] || 0) - (season.pts[a.id] || 0); })[0];
       radio('Season ' + season.year + ' complete. ' + ch.name + ' take the constructors title. The next Grand Prix starts a new season.', true);
+    }
+  }
+
+  /* ---------- driver minds: racing lines, tow, lunges, covering, alongside rule, mistakes, contact, overtake mode ---------- */
+  var CAR_LEN_M = 5.7, MIN_GAP_M = 7.0, HW_M = 4.4, SEP_M = 2.4;
+  var RUNS = [], RUNAT = null, NXTI = null, NXTD = null, LNE = null, KSG = null;
+  var _ci = -1, _ni = -1, _dn = 1e9;
+
+  /* corners: runs of tight curvature, the line through them (outside, apex, outside) and a lookup of what is coming up */
+  function buildLine(kap, sm) {
+    var n = kap.length, dsm = DS * MPP, i, j, k, W = 10, ks = new Float32Array(n), mn = 1e9, st = 0;
+    for (i = 0; i < n; i++) {
+      var a = 0; for (j = -W; j <= W; j++) a += kap[(i + j + n) % n];
+      ks[i] = a / (2 * W + 1) / MPP;                 /* signed curvature, rad per metre */
+      if (Math.abs(ks[i]) < mn) { mn = Math.abs(ks[i]); st = i; }
+    }
+    KSG = ks; RUNS = []; RUNAT = new Int16Array(n).fill(-1); NXTI = new Int16Array(n).fill(-1); NXTD = new Float32Array(n);
+    var TH = 1 / 450, cur = null, minLen = Math.max(3, Math.round(24 / dsm));
+    for (k = 0; k < n; k++) {
+      i = (st + k) % n;
+      var on = Math.abs(ks[i]) > TH, sg = ks[i] > 0 ? 1 : -1;
+      if (on && cur && cur.sgn === sg) { cur.b = i; cur.len++; if (Math.abs(ks[i]) > Math.abs(ks[cur.apex])) cur.apex = i; }
+      else {
+        if (cur && cur.len >= minLen) RUNS.push(cur);
+        cur = on ? { a: i, b: i, apex: i, sgn: sg, len: 1 } : null;
+      }
+    }
+    if (cur && cur.len >= minLen) RUNS.push(cur);
+    var vt = 0; for (i = 0; i < n; i++) vt = Math.max(vt, PROF[1][i]);
+    RUNS.forEach(function (r, ri) {
+      r.vmin = PROF[1][r.apex];
+      var vp = 0, back = Math.round(320 / dsm);
+      for (j = 0; j < back; j++) vp = Math.max(vp, PROF[1][(r.a - j + n * 4) % n]);
+      r.brk = vp > r.vmin * 1.22 && vp > 50;       /* a proper braking zone: somewhere to overtake */
+      for (j = 0; j < r.len + 1; j++) RUNAT[(r.a + j) % n] = ri;
+    });
+    /* the line: outside on the way in, kerb at the apex, outside on the way out */
+    var O = m2p(2.4), I = m2p(3.2), ln = new Float32Array(n);
+    for (i = 0; i < n; i++) ln[i] = NaN;
+    function span(a, b, v0, v1, force) {
+      var m = ((b - a) % n + n) % n || 1;
+      for (var q = 0; q <= m; q++) {
+        var u = q / m, e = u * u * (3 - 2 * u), idx = (a + q) % n;
+        if (force || isNaN(ln[idx])) ln[idx] = v0 + (v1 - v0) * e;
+      }
+    }
+    var pre = Math.round(60 / dsm), ramp = Math.round(90 / dsm);
+    RUNS.forEach(function (r) {
+      var s = r.sgn, ap = r.apex, b = (r.a + r.len) % n;
+      span(r.a, ap, -O * s, I * s, true); span(ap, b, I * s, -O * s, true);
+    });
+    RUNS.forEach(function (r) {
+      var s = r.sgn, b = (r.a + r.len) % n;
+      span((r.a - pre - ramp + n * 4) % n, (r.a - pre + n * 4) % n, 0, 0, false);
+      span((r.a - pre + n * 4) % n, r.a, 0, -O * s, false);
+      span(b, (b + pre) % n, -O * s, 0, false);
+    });
+    for (i = 0; i < n; i++) if (isNaN(ln[i])) ln[i] = 0;
+    for (var pass = 0; pass < 3; pass++) { var cp = Float32Array.from(ln); for (i = 0; i < n; i++) ln[i] = (cp[(i - 1 + n) % n] + cp[i] * 2 + cp[(i + 1) % n]) / 4; }
+    LNE = ln;
+    /* what is the next corner from each sample */
+    var nx = -1, dd = 0;
+    for (k = 2 * n; k >= 0; k--) {
+      i = k % n;
+      if (RUNS.length && RUNAT[i] >= 0 && (i === RUNS[RUNAT[i]].a)) { nx = RUNAT[i]; dd = 0; }
+      else dd++;
+      if (k < n) { NXTI[i] = nx; NXTD[i] = dd * dsm; }
+    }
+  }
+  function lineAt(s) {
+    if (!LNE) return 0;
+    var f = (((s % L) + L) % L) / DS, i = Math.floor(f), u = f - i;
+    return LNE[i % NP] * (1 - u) + LNE[(i + 1) % NP] * u;
+  }
+  function look(s) {
+    if (!LNE) { _ci = -1; _ni = -1; _dn = 1e9; return; }
+    var i = Math.floor((((s % L) + L) % L) / DS) % NP;
+    _ci = RUNAT[i]; _ni = NXTI[i]; _dn = NXTD[i];
+    if (_ci >= 0 && _ni === _ci) { /* inside a run: the next one is the one after */ _ni = (_ci + 1) % RUNS.length; }
+  }
+
+  function initTraits(c) {
+    var h = rng(hashStr(c.full || c.code) + 17);
+    c.tr = { ag: 0.25 + 0.65 * h(), df: 0.25 + 0.65 * h(), cs: 0.35 + 0.6 * h(), bias: (h() - 0.5) * 1.3, wob: h() * 6.28, out: h() < 0.25 };
+    c.sh = 0; c.latV = c.latV || 0; c.en = 1; c.dmg = c.dmg || 0; c.cool = 0; c.int = null; c.mist = null; c.mcl = 0; c.tcl = 0; c.radT = 0;
+  }
+
+  function sortedRacers() {
+    var idx = [], cars = R.cars, i;
+    for (i = 0; i < cars.length; i++) {
+      var c = cars[i];
+      if (!c.hidden && !c.out && (c.mode === 'race' || c.mode === 'rolling')) { c.sk = ((physS(c) % L) + L) % L; idx.push(c); }
+    }
+    idx.sort(function (a, b) { return a.sk - b.sk; });
+    return idx;
+  }
+  function aheadM(c, o) { return (((o.sk - c.sk) % L + L) % L) * MPP; }
+  function relM(c, o) { return (((o.sk - c.sk + L / 2) % L + L) % L - L / 2) * MPP; }   /* +: o is ahead of c, along the track */
+
+  function battle(dt) {
+    var idx = sortedRacers(), cnt = idx.length, i, j, wxI = R.wx[Math.min(R.wx.length - 1, R.stintIdx)] || 0, wet = wxI === 2;
+    var grid = R.simT < 8 && R.raceT < 8, lap1 = R.raceT < 70, CL = CAR_LEN_M;
+    for (i = 0; i < cnt; i++) {
+      var c = idx[i], race = c.mode === 'race', sp = physS(c), sraw = profSpeed(c.aero, sp), sm = 1, lim = 1e9, f1 = null, g1 = 1e9, o, gm;
+      if (!c.tr) initTraits(c);
+      if (c.ph === undefined) c.ph = (hashStr(c.code) % 628) / 100;
+      for (j = 1; j <= 3 && cnt > 3; j++) {
+        o = idx[(i + j) % cnt]; gm = aheadM(c, o);
+        if (gm > 90) break;
+        if (j === 1) { f1 = o; g1 = gm; }
+        if (gm <= 60 && Math.abs(o.lat - c.lat) < m2p(2.2)) lim = Math.min(lim, o.v + (gm - MIN_GAP_M) * 0.8);
+      }
+      var b1 = cnt > 3 ? idx[(i - 1 + cnt) % cnt] : null, gb = b1 ? aheadM(b1, c) : 1e9;
+      var tg = f1 ? g1 / Math.max(c.v, 25) : 9, tb = b1 ? gb / Math.max(b1.v, 25) : 9;
+      var ov = f1 ? clamp(1.15 - Math.abs(f1.lat - c.lat) / m2p(3.2), 0.2, 1) : 1;
+      /* tow on the straights, dirty air in the corners */
+      if (f1 && race) {
+        if (sraw > 70) { if (tg < 0.8) sm *= 1 + 0.012 * (1 - tg / 0.8) * ov; }
+        else if (tg < 0.5) sm *= 1 - 0.012 * (1 - tg / 0.5) * ov;
+      }
+      /* overtake mode: within a second of the car ahead you get extra power for a while, never in the wet */
+      if (race && f1 && !wet && R.raceT > 30 && c.D / L >= 1) {
+        if (!c.ovt && tg < 1.0 && c.en > 0.35 && sraw > 62) c.ovt = true;
+        if (c.ovt && (tg > 1.7 || c.en <= 0.02)) c.ovt = false;
+      } else c.ovt = false;
+      c.drs = !!(c.ovt && sraw > 62);
+      if (c.drs) { sm *= 1.028; c.en = Math.max(0, c.en - 0.09 * dt); } else c.en = Math.min(1, c.en + 0.028 * dt);
+      sm *= 1 + 0.0016 * Math.sin(R.simT * 0.045 + c.ph);
+      look(sp);
+      var shT = 0, want = 0, key = Math.floor(sp / L) * 100 + (_ci >= 0 ? _ci : _ni);
+      if (!race) { c.sm = sm; c.lim = lim; c.sh += clamp(0 - c.sh, -20 * dt, 20 * dt); if (!grid) c.latT = 0; continue; }
+      if (c.cool > 0) c.cool -= dt;
+      if (c.mcl > 0) c.mcl -= dt;
+      if (c.tcl > 0) c.tcl -= dt;
+      if (c.radT > 0) c.radT -= dt;
+      var tr = c.tr, mine = isMine(c);
+      var pcA = paceOf(c, wxI);
+      /* the line, with a personal offset and a slow wander so a field in clean air is not one ruler-straight queue */
+      var ideal = lineAt(sp + 8 / MPP), pers = m2p(tr.bias) * (_ci >= 0 ? 0.4 : 1);
+      want = ideal + pers + (_ci < 0 ? m2p(0.5) * Math.sin(R.simT * 0.21 + tr.wob) : 0);
+      var ins = _ni >= 0 && RUNS[_ni] ? RUNS[_ni].sgn : 0;
+      /* pulling out of the tow on the way to a braking zone */
+      var nxtR = _ni >= 0 ? RUNS[_ni] : null;
+      if (!grid && _ci < 0 && f1 && tg < 1.15 && nxtR && nxtR.brk && _dn < 650 && _dn > 60) {
+        if (c.towKey !== key) {
+          c.towKey = key; c.towSide = 0;
+          if (R.rnd() < 0.3 + 0.55 * tr.ag + (lap1 ? 0.15 : 0)) c.towSide = (tr.out && R.rnd() < 0.5 ? -1 : 1) * nxtR.sgn;
+        }
+        if (c.towSide) want = f1.lat + c.towSide * m2p(2.5);
+      }
+      /* decide on a move at the braking zone */
+      if (!grid && !c.int && !c.mist && f1 && nxtR && nxtR.brk && _ci < 0 && _dn < 250 && _dn > 45 && c.decKey !== key && g1 < c.v * 0.7 + 10 && !(c.cool > 0)) {
+        c.decKey = key;
+        var advT = clamp((pcA - paceOf(f1, wxI)) * 40, -0.25, 0.35);
+        var p = clamp(0.2 + 0.45 * tr.ag + advT + (c.drs ? 0.12 : 0) + (lap1 ? 0.12 : 0), 0.03, 0.92);
+        if (R.rnd() < p) {
+          var side = (f1.lat * ins > m2p(1.2)) ? -ins : ins;
+          if (side !== ins && R.rnd() > 0.3 + 0.4 * tr.ag) side = 0;
+          if (side) c.int = { o: f1, side: side, run: _ni, entered: false, t: 0, ins: side === ins, adv: advT };
+        }
+      }
+      var it = c.int;
+      if (it) {
+        it.t += dt;
+        var oo = it.o, gg = relM(c, oo);
+        if (_ci === it.run) it.entered = true;
+        if (oo.hidden || oo.out || oo.mode !== 'race' || it.t > 14 || gg < -CL * 1.5 || gg > 90 || (it.entered && _ci !== it.run)) {
+          c.cool = gg < -CL ? 2 : 3 + R.rnd() * 3; c.int = it = null;
+        } else if (_ci === it.run && gg > CL * 1.0 && it.ins && Math.abs(c.lat - oo.lat) < m2p(3.2)) {
+          c.cool = 3; c.int = it = null;     /* not alongside by the turn in: tuck in behind */
+        } else {
+          want = oo.lat + it.side * m2p(2.6);
+          if (_ci >= 0 || _dn < 260) shT = clamp(1.5 + 7 * tr.ag + clamp(it.adv * 12, -3, 5), 0, 13) * (it.ins ? 1 : 0.5);
+          if (mine && !it.said && c.radT <= 0 && _ci < 0 && _dn < 120 && gg < 25) { it.said = true; c.radT = 25; radio(c.name + ' goes for the ' + (it.ins ? 'inside' : 'outside') + ' of ' + oo.name + '.', true); }
+        }
+      }
+      /* defend: cover the inside once, take the inside line through that corner, never move again under braking */
+      if (!it && !c.mist && b1 && b1.int && b1.int.o === c && nxtR && _ci < 0 && _dn < 250) {
+        if (c.cvKey !== key) { c.cvKey = key; c.cv = (R.rnd() < 0.3 + 0.55 * tr.df) ? { run: _ni, side: b1.int.side } : null; }
+      }
+      if (c.cv) {
+        if ((_ci >= 0 && _ci === c.cv.run) || (_ci < 0 && _ni === c.cv.run && _dn < 260)) {
+          if (!it) { want = c.cv.side * m2p(2.8); if (_ci >= 0) sm *= 1; }
+        } else if (_ci >= 0 && _ci !== c.cv.run) c.cv = null;
+        else if (_ci < 0 && _ni !== c.cv.run) c.cv = null;
+      }
+      /* mistakes: lock-ups and running wide, more likely under pressure and in the wet */
+      if (!c.mist && !grid && R.raceT > 15 && c.mcl <= 0 && (_ci >= 0 || (nxtR && _dn < 130))) {
+        var press = (tb < 0.6 && b1 ? 1 : 0) + (it ? 1 : 0);
+        var rate = (0.0003 + press * 0.0028) * (1.3 - tr.cs) * (wxI === 2 ? 2.2 : wxI === 1 ? 1.4 : 1);
+        if (R.rnd() < rate * dt) {
+          c.mist = { t: 2.6, dir: -(_ci >= 0 ? RUNS[_ci].sgn : nxtR.sgn) }; c.mcl = 35; c.int = it = null; c.cool = 3;
+          if (mine && c.radT <= 0) { c.radT = 20; radio(c.name + ' locks up and runs wide.', true); }
+        }
+      }
+      if (c.mist) {
+        c.mist.t -= dt; want = c.mist.dir * m2p(4.0); sm *= 0.955; shT = 0;
+        if (c.mist.t <= 0) c.mist = null;
+      }
+      /* cost of leaving the line in a corner */
+      if (_ci >= 0 && !c.mist) {
+        var dev = Math.abs(c.lat - (ideal + pers)) * MPP;
+        sm *= 1 - 0.0055 * Math.min(dev, 4.5);
+      }
+      /* alongside rule: whoever has at least half a nose in front keeps the room, the other gives it */
+      for (j = -2; j <= 2; j++) {
+        if (!j || cnt < 4) continue;
+        var n2 = idx[(i + j + cnt) % cnt], rel = relM(c, n2);
+        if (rel >= -0.5 * CL && rel < CL + 2) {
+          var dl = n2.lat - c.lat; if (Math.abs(dl) < 0.05) dl = (n2.num > c.num) ? 1 : -1;
+          if (dl > 0) want = Math.min(want, n2.lat - m2p(SEP_M)); else want = Math.max(want, n2.lat + m2p(SEP_M));
+        }
+      }
+      want = clamp(want, -m2p(HW_M), m2p(HW_M));
+      c.sh += clamp(shT - c.sh, -15 * dt, 15 * dt);
+      c.sm = sm; c.lim = lim;
+      if (!grid) c.latT = want;
+    }
+  }
+  /* hard stop on driving through a car that shares the same bit of road, with the odd touch when it comes to that */
+  function separate() {
+    var idx = sortedRacers(), cnt = idx.length, i, j;
+    if (cnt < 4) return;
+    for (i = 0; i < cnt; i++) {
+      var c = idx[i];
+      for (j = 1; j <= 2; j++) {
+        var o = idx[(i + j) % cnt], gm = aheadM(c, o);
+        if (gm < CAR_LEN_M + 0.5 && Math.abs(o.lat - c.lat) < m2p(1.9)) {
+          c.D -= (CAR_LEN_M + 0.5 - gm) / MPP; if (c.v > o.v) c.v = o.v;
+          if (R.raceT > 12 && !(c.tcl > 0) && !(o.tcl > 0) && R.rnd() < 0.06 && c.mode === 'race' && o.mode === 'race') {
+            c.dmg = (c.dmg || 0) + 0.003 + R.rnd() * 0.006; o.dmg = (o.dmg || 0) + 0.001 + R.rnd() * 0.002; c.tcl = o.tcl = 30;
+            var mn = isMine(c) || isMine(o);
+            if (mn) radio(c.name + ' and ' + o.name + ' touch. Some damage.', true);
+          }
+        }
+      }
     }
   }
 
@@ -1725,10 +1868,6 @@ button, input { font-family: inherit; }
       strokePoly(g, TRACK.poly, m2p(4.5), 'rgba(0,0,0,0.30)');             /* rubbered racing line */
       strokePoly(g, TRACK.poly, m2p(11), 'rgba(255,255,255,0.025)');
     }
-    DRSZ.forEach(function (z) {
-      g.lineCap = 'butt'; strokePoly(g, z, road * 0.5, 'rgba(46,204,113,0.07)');
-      g.setLineDash([m2p(6), m2p(14)]); strokePoly(g, z, Math.max(m2p(0.5), 0.9 * u), 'rgba(46,204,113,0.65)'); g.setLineDash([]); g.lineCap = 'round';
-    });
     g.setLineDash([m2p(6), m2p(10)]); strokePoly(g, TRACK.poly, Math.max(m2p(0.25), 0.6 * u), 'rgba(255,255,255,0.12)'); g.setLineDash([]);
     g.lineCap = 'butt';
     strokePoly(g, PIT.poly, pitW + 2 * edge, 'rgba(255,255,255,0.32)');
@@ -1786,7 +1925,7 @@ button, input { font-family: inherit; }
       return { x: p.x - Math.sin(a) * car.lat, y: p.y + Math.cos(a) * car.lat, a: a, s: null };
     }
     var sp = physS(car), t = trackPose(sp);
-    return { x: t.x - Math.sin(t.a) * car.lat, y: t.y + Math.cos(t.a) * car.lat, a: t.a, s: sp };
+    return { x: t.x - Math.sin(t.a) * car.lat, y: t.y + Math.cos(t.a) * car.lat, a: t.a + (car.latV ? Math.atan2(car.latV, Math.max(car.v, 8) / MPP) : 0), s: sp };
   }
   function trail(g, s, len, lat, color, wBase, alphaMax) {
     var N = 14, step = len / N, prev = null;
@@ -2019,7 +2158,7 @@ button, input { font-family: inherit; }
     for (i = 0; i < mesh.length; i++) {
       var p = mesh[i];
       if (opt && opt.cockpit && i !== 1 && i !== 12 && i !== 19 && i !== 20) continue;
-      var lf = (car.drs && p.flap) ? 0.13 : 0;   /* DRS: the top rear wing flap lifts */
+      var lf = (car.drs && p.flap) ? 0.13 : 0;   /* overtake mode: the rear wing flap lifts */
       var v = [W(p.x0, p.yc - p.a0, p.zb0 + lf), W(p.x0, p.yc + p.a0, p.zb0 + lf), W(p.x0, p.yc + p.a0, p.zb1 + lf), W(p.x0, p.yc - p.a0, p.zb1 + lf),
                W(p.x1, p.yc - p.a1, p.zf0 + lf), W(p.x1, p.yc + p.a1, p.zf0 + lf), W(p.x1, p.yc + p.a1, p.zf1 + lf), W(p.x1, p.yc - p.a1, p.zf1 + lf)];
       var cen3 = [0, 0, 0]; for (j = 0; j < 8; j++) { cen3[0] += v[j][0] / 8; cen3[1] += v[j][1] / 8; cen3[2] += v[j][2] / 8; }
@@ -2081,7 +2220,7 @@ button, input { font-family: inherit; }
     var W = cv.width, H = cv.height, g = ctx, mode = cfg.cam, cs = cssScale(), px = W / 1000, i, j;
     var lead = focusCar(), wx = R.wx[Math.min(R.wx.length - 1, R.stintIdx)] || 0, wet = wx > 0, mine = null;
     var lp = carPose(lead), lx = lp.x * MPP, ly = lp.y * MPP, sCar = lp.s != null ? lp.s : (physS(lead));
-    var hdg = lp.a;
+    var hdg = lp.s != null ? trackPose(lp.s).a : lp.a;
     /* camera rig */
     var tvYaw = hdg;
     if (!C3.init) { C3.yaw = hdg; C3.init = true; }
@@ -2330,7 +2469,7 @@ button, input { font-family: inherit; }
     }
     if (lead.drs) {
       g.fillStyle = '#2ECC71'; g.fillRect(bx, y - 40 * s, 64 * s, 52 * s);
-      g.fillStyle = '#04120A'; g.font = '700 ' + 26 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'center'; g.fillText('DRS', bx + 32 * s, y);
+      g.fillStyle = '#04120A'; g.font = '700 ' + 26 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.textAlign = 'center'; g.fillText('OVT', bx + 32 * s, y);
     }
     g.restore();
   }
@@ -2387,7 +2526,7 @@ button, input { font-family: inherit; }
     g.fillStyle = TEAM.acc; g.font = '700 ' + 18 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.fillText('P' + pos, -52 * s, -64 * s);
     var gaC = gapAhead(lead);
     if (gaC != null) { g.fillStyle = gaC < 1 ? '#2ECC71' : 'rgba(255,255,255,0.75)'; g.font = '700 ' + 15 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.fillText('+' + gaC.toFixed(1), 38 * s, -138 * s); }
-    if (lead.drs) { g.fillStyle = '#2ECC71'; g.fillRect(-92 * s, -152 * s, 54 * s, 17 * s); g.fillStyle = '#04120A'; g.font = '700 ' + 14 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.fillText('DRS', -65 * s, -143 * s); }
+    if (lead.drs) { g.fillStyle = '#2ECC71'; g.fillRect(-92 * s, -152 * s, 54 * s, 17 * s); g.fillStyle = '#04120A'; g.font = '700 ' + 14 * s + 'px "Barlow Condensed", Arial, sans-serif'; g.fillText('OVT', -65 * s, -143 * s); }
     g.fillStyle = CI[lead.tyre.c].ring; g.beginPath(); g.arc(38 * s, -62 * s, 7 * s, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#0B0C0E'; g.beginPath(); g.arc(38 * s, -62 * s, 3 * s, 0, Math.PI * 2); g.fill();
     /* grips and buttons */
