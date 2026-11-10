@@ -2322,6 +2322,7 @@ button, input { font-family: inherit; }
     }
     return [120, 120, 120];
   }
+  function shadeRGBn(c, k, kr, kg, kb) { return [Math.min(255, Math.round(c[0] * k * kr)), Math.min(255, Math.round(c[1] * k * kg)), Math.min(255, Math.round(c[2] * k * kb))]; }
   function shadeRGB(c, k) { return 'rgb(' + Math.min(255, Math.round(c[0] * k)) + ',' + Math.min(255, Math.round(c[1] * k)) + ',' + Math.min(255, Math.round(c[2] * k)) + ')'; }
   /* collects the visible faces of a car, sorted far to near, then paints them */
   function drawCar3D(g, pose, car, opt) {
@@ -2334,8 +2335,13 @@ button, input { font-family: inherit; }
       var cc = toCam(cen[0], cen[1], cen[2]); if (cc[2] < 0.05) { if (!opt || !opt.inside) return; }
       var tv = [CM.X - cen[0], CM.Y - cen[1], CM.Z - cen[2]];
       if (nrm[0] * tv[0] + nrm[1] * tv[1] + nrm[2] * tv[2] <= 0) return;
-      var lam = Math.max(0, nrm[0] * LIGHT[0] + nrm[1] * LIGHT[1] + nrm[2] * LIGHT[2]);
-      faces.push({ d: cc[2], vs: vs, col: shadeRGB(base, 0.5 + 0.55 * lam * (shadeBoost || 1)) });
+      var lam = Math.max(0, nrm[0] * LIGHT[0] + nrm[1] * LIGHT[1] + nrm[2] * LIGHT[2]), kk = 0.4 + 0.5 * lam * (shadeBoost || 1) + 0.2 * Math.max(0, nrm[2]) - 0.12 * Math.max(0, -nrm[2]);
+      var sc = shadeRGBn(base, kk, 1.04, 1, 0.94), sp = 0;
+      if (!low) {
+        var vl = Math.sqrt(tv[0] * tv[0] + tv[1] * tv[1] + tv[2] * tv[2]) || 1, hx = LIGHT[0] + tv[0] / vl, hy = LIGHT[1] + tv[1] / vl, hz = LIGHT[2] + tv[2] / vl, hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
+        sp = Math.max(0, (nrm[0] * hx + nrm[1] * hy + nrm[2] * hz) / hl); sp = Math.pow(sp, 36) * (base[0] + base[1] + base[2] > 120 ? 0.55 : 0.2);
+      }
+      faces.push({ d: cc[2], vs: vs, col: sp > 0.03 ? 'rgb(' + Math.round(sc[0] + (255 - sc[0]) * sp) + ',' + Math.round(sc[1] + (255 - sc[1]) * sp) + ',' + Math.round(sc[2] + (255 - sc[2]) * sp) + ')' : 'rgb(' + sc.join(',') + ')' });
     }
     for (i = 0; i < mesh.length; i++) {
       var p = mesh[i];
@@ -2381,12 +2387,34 @@ button, input { font-family: inherit; }
         }
       });
     }
+    if (!(opt && opt.cockpit) && Q3.lvl < 2) {
+      var shp = [], sh0 = -LIGHT[0] * 0.9, sh1 = -LIGHT[1] * 0.9;
+      [[-2.9, -1.05], [-2.9, 1.05], [-0.6, 1.25], [1.6, 1.0], [3.2, 0.35], [3.2, -0.35], [1.6, -1.0], [-0.6, -1.25]].forEach(function (q) { var wq = W(q[0] + sh0, q[1] + sh1, 0.02); shp.push(wq); });
+      poly3(g, shp, 'rgba(0,0,0,0.34)');
+    }
     faces.sort(function (a, b) { return b.d - a.d; });
     for (i = 0; i < faces.length; i++) poly3(g, faces[i].vs, faces[i].col, low ? null : 'rgba(0,0,0,0.25)', 0.5);
   }
 
   var Q3 = { lvl: 0, ema: 6, hold: 0 };
   var MTN = { seed: 1 };
+  var CLEAR = {}, TRKPTS = null, TRKID = '';
+  function trackPts() {
+    if (TRKPTS && TRKID === CUR.id) return TRKPTS;
+    TRKID = CUR.id; CLEAR = {}; TRKPTS = [];
+    for (var m = 0, tl2 = L * MPP; m < tl2; m += 10) { var q = trackPose(m / MPP); TRKPTS.push(q.x * MPP, q.y * MPP); }
+    return TRKPTS;
+  }
+  /* a sign is only placed when no part of the track (this stretch or another) is within 12.5 m of any point along it */
+  function signClear(key, cMm, sd, off, half) {
+    var P = trackPts(); if (CLEAR[key] !== undefined) return CLEAR[key];
+    var ok = true, dms = [-half, -half / 2, 0, half / 2, half], k2, i2;
+    for (k2 = 0; k2 < dms.length && ok; k2++) {
+      var q = trackPose((cMm + dms[k2]) / MPP), px = q.x * MPP - Math.sin(q.a) * sd * off, py = q.y * MPP + Math.cos(q.a) * sd * off;
+      for (i2 = 0; i2 < P.length; i2 += 2) { var dx = P[i2] - px, dy = P[i2 + 1] - py; if (dx * dx + dy * dy < 156) { ok = false; break; } }
+    }
+    CLEAR[key] = ok; return ok;
+  }
   var CLOUD = null, VIG = null, VIGK = '';
   function cloudSprite() {
     if (CLOUD) return CLOUD;
@@ -2487,7 +2515,7 @@ button, input { font-family: inherit; }
       g.lineTo(W + 4, horizon + 2); g.closePath();
       var mc2 = ly2[2]; g.fillStyle = 'rgb(' + Math.round(mc2[0] * 0.6 + skyHor[0] * 0.4) + ',' + Math.round(mc2[1] * 0.6 + skyHor[1] * 0.4) + ',' + Math.round(mc2[2] * 0.6 + skyHor[2] * 0.4) + ')'; g.fill();
     });
-    var GR = wet ? [18, 38, 24] : [26, 62, 34], GR2 = wet ? [16, 34, 22] : [22, 54, 30];
+    var GR = wet ? [18, 38, 24] : [32, 76, 40], GR2 = wet ? [16, 34, 22] : [22, 56, 30];
     var gg = g.createLinearGradient(0, horizon, 0, H); gg.addColorStop(0, fogCol(GR, 3000, 700)); gg.addColorStop(1, 'rgb(' + GR.join(',') + ')');
     g.fillStyle = gg; g.fillRect(-W * 0.1, horizon - 1, W * 1.2, H - horizon + H * 0.1 + 2);
 
@@ -2503,14 +2531,72 @@ button, input { font-family: inherit; }
     function strip(a, b, o0, o1, fill, z) { return poly3(g, [edge(a, o0, z), edge(a, o1, z), edge(b, o1, z), edge(b, o0, z)], fill); }
     var roadA = wet ? [30, 33, 39] : [48, 50, 56], roadB = wet ? [26, 29, 34] : [42, 44, 50], runA = wet ? [30, 33, 38] : [46, 49, 55];
     var fogK = wet ? 380 : 900, dk = wet ? 0.85 : 1;
+    var items = [], signs = [], sBuck = {};
+    function addItem(dpt, fn) { if (dpt > 0.5) items.push({ d: dpt, fn: fn }); }
+    function addSign(sNear, dpt, fn) { if (dpt > 0.5) signs.push({ s: sNear, d: dpt, fn: fn }); }
+    /* digital boards: an LED strip over the start lights, wall panels and billboards. All are fixed in the world and change every few laps */
+    (function () {
+      var ep = Math.max(0, Math.floor(lead.D / L / 3)) + season.round * 5, p0 = trackPose(START_D), X = p0.x * MPP, Y = p0.y * MPP, o = { x: X, y: Y, c: Math.cos(p0.a), n: Math.sin(p0.a) }, dptG = toCam(X, Y, 8)[2];
+      addItem(dptG - 0.5, function () {
+        var dd = Math.max(1, dptG);
+        [-1, 1].forEach(function (sd) { poly3(g, [edge(o, sd * (hw + 1.4), 7.2), edge(o, sd * (hw + 2.2), 7.2), edge(o, sd * (hw + 2.2), 9.7), edge(o, sd * (hw + 1.4), 9.7)], fogCol([38, 41, 48], dd, fogK, dk)); });
+        poly3(g, [edge(o, -hw - 2.2, 9.7), edge(o, hw + 2.2, 9.7), edge(o, hw + 2.2, 9.9), edge(o, -hw - 2.2, 9.9)], fogCol([44, 48, 56], dd, fogK, dk));
+        if (dd < 380) panelText(function (u, z) { var e = edge(o, -hw - 2.2 + 2 * (hw + 2.2) * u, z); return proj(e[0], e[1], e[2]); }, 2 * (hw + 2.2), 9.65, 7.45, '#08090B', ledText(ep), nowMs * 0.14);
+      });
+      var tl = L * MPP, m0 = sCar * MPP, k, nb = 0, nbMax = Q3.lvl ? 4 : 7, startM = (START_D * MPP) % tl;
+      /* billboards: angled towards the cars coming up the road */
+      var TH = 0.62, dS = 15 * Math.cos(TH), dL = 15 * Math.sin(TH);
+      for (k = Math.floor((m0 - 60) / 260); k <= Math.floor((m0 + 900) / 260) && nb < nbMax; k++) {
+        var cM = k * 260 + 130, cm = ((cM % tl) + tl) % tl;
+        if (cm > tl - 150 || Math.abs(cm - startM) < 45) continue;
+        var sd0 = Math.floor(cm / 260) % 2 ? 1 : -1, isK0 = isKerbAt(cM / MPP);
+        if (!signClear('b' + Math.round(cm) + ',' + sd0, cM, sd0, hw + (isK0 ? 46 : 11) + 9, 13)) continue;
+        var idx = Math.floor(cm / 260), sd = idx % 2 ? 1 : -1, sPx = cM / MPP, q = trackPose(sPx), wallOff = isKerbAt(sPx) ? 46 : 11, mag = hw + wallOff + 9;
+        var cx = q.x * MPP - Math.sin(q.a) * sd * mag, cy = q.y * MPP + Math.cos(q.a) * sd * mag, dptB = toCam(cx, cy, 6)[2];
+        if (dptB < 12 || dptB > (Q3.lvl ? 450 : 800)) continue;
+        nb++;
+        (function (idx, sd, cM, mag, dptB, led) {
+          addSign((cM - 14) / MPP, dptB, function () {
+            var ad = adAt(idx * 2 + ep), fgd = Math.max(1, dptB);
+            function at(f, m2) { var q3 = trackPose((cM + dS * (2 * f - 1)) / MPP), off2 = sd * (mag + dL * (1 - 2 * f) + (m2 || 0)); return [q3.x * MPP - Math.sin(q3.a) * off2, q3.y * MPP + Math.cos(q3.a) * off2]; }
+            [0.12, 0.88].forEach(function (f) { var c0 = at(f, 0), q4 = trackPose(cM / MPP), dx = -Math.sin(q4.a) * 0.35, dy = Math.cos(q4.a) * 0.35; poly3(g, [[c0[0] - dx, c0[1] - dy, 0], [c0[0] + dx, c0[1] + dy, 0], [c0[0] + dx, c0[1] + dy, 11], [c0[0] - dx, c0[1] - dy, 11]], fogCol([60, 64, 72], fgd, fogK, dk)); });
+            var near = fgd < (Q3.lvl ? 260 : 520), pt = function (u, z) { var f = sd > 0 ? 1 - u : u, c1 = at(f, 0); return proj(c1[0], c1[1], z); };
+            if (led) panelText(pt, 30, 11, 5, '#08090B', near ? ledText(ep + idx) : [], nowMs * 0.1 + idx * 300);
+            else panelText(pt, 30, 11, 5, ad.bg, near ? [{ t: ad.n, c: ad.fg }] : [], 0);
+          });
+        })(idx, sd, cM, mag, dptB, idx % 3 === 2);
+      }
+      /* low wall panels, fixed 14 m panels on every other 28 m block, both sides, only close to the camera */
+      var wb0 = Math.floor((m0 - 20) / 28), wb1 = Math.floor((m0 + (Q3.lvl ? 110 : 230)) / 28);
+      for (k = wb0; k <= wb1; k++) {
+        [-1, 1].forEach(function (sd2) {
+          var cMw = k * 28 + 14, cmw = ((cMw % tl) + tl) % tl;
+          if (Math.abs(cmw - startM) < 20) return;
+          var sPxw = cMw / MPP, wOff = isKerbAt(sPxw) ? 46 : 11, offw = sd2 * (hw + wOff - 0.05), qw = trackPose(sPxw), cxw = qw.x * MPP - Math.sin(qw.a) * offw, cyw = qw.y * MPP + Math.cos(qw.a) * offw, dptW = toCam(cxw, cyw, 0.6)[2];
+          if (dptW < 8) return;
+          if (!signClear('w' + Math.round(cmw) + ',' + sd2, cMw, sd2, hw + wOff - 0.05, 7)) return;
+          addSign((cMw - 8) / MPP, dptW + 0.2, function () {
+            var adw = adAt(Math.floor(cmw / 28) * 3 + (sd2 > 0 ? 1 : 0) + ep), sA2 = (sd2 > 0 ? cMw + 7 : cMw - 7) / MPP, sB2 = (sd2 > 0 ? cMw - 7 : cMw + 7) / MPP;
+            panelText(function (u, z) { var q5 = trackPose(sA2 + (sB2 - sA2) * u); return proj(q5.x * MPP - Math.sin(q5.a) * offw, q5.y * MPP + Math.cos(q5.a) * offw, z); }, 14, 1.1, 0.18, adw.bg, dptW < 130 ? [{ t: adw.n, c: adw.fg }] : [], 0);
+          });
+        });
+      }
+    })();
+    signs.forEach(function (sg) {
+      var bi = sam.length - 2, q2;
+      if (sg.s < sam[0].s) bi = 0; else for (q2 = 0; q2 < sam.length - 1; q2++) if (sg.s >= sam[q2].s && sg.s < sam[q2 + 1].s) { bi = q2; break; }
+      (sBuck[bi] = sBuck[bi] || []).push(sg);
+    });
     for (i = sam.length - 2; i >= 0; i--) {
       var a = sam[i], b = sam[i + 1], dm = Math.max(1, (a.d + b.d) / 2 + (mode === 'tv' ? 40 : 10)), band = Math.floor(((a.s + b.s) / 2 * MPP) / 24) % 2;
       var kerb = isKerbAt(a.s);
       b = { d: b.d, s: b.s, x: a.x + (b.x - a.x) * 1.07, y: a.y + (b.y - a.y) * 1.07, c: b.c, n: b.n, a: b.a };   /* overlap the next strip so no seams show */
       strip(a, b, -90, 90, fogCol(band ? GR : GR2, dm, fogK, dk));
+      if (Q3.lvl === 0 && dm < 700) { var og = band ? [GR[0] * 0.8, GR[1] * 0.82, GR[2] * 0.85] : [GR2[0] * 0.82, GR2[1] * 0.84, GR2[2] * 0.86]; strip(a, b, -90, -40, fogCol(og, dm, fogK, dk)); strip(a, b, 40, 90, fogCol(og, dm, fogK, dk)); }
       if (kerb) { strip(a, b, -48, -hw - 8, fogCol([126, 112, 80], dm, fogK, dk)); strip(a, b, hw + 8, 48, fogCol([126, 112, 80], dm, fogK, dk)); }
       strip(a, b, -hw - 8, hw + 8, fogCol(runA, dm, fogK, dk));
       strip(a, b, -hw, hw, fogCol(band ? roadA : roadB, dm, fogK, dk));
+      if (Q3.lvl === 0 && dm < 600) { var rc = band ? roadA : roadB, rb = [rc[0] * 0.84, rc[1] * 0.84, rc[2] * 0.86]; strip(a, b, -3.4, -0.7, fogCol(rb, dm, fogK, dk)); strip(a, b, 0.7, 3.4, fogCol(rb, dm, fogK, dk)); }
       strip(a, b, -1.6, 1.6, fogCol([34, 35, 40], dm, fogK, dk));
       strip(a, b, -hw, -hw + 0.35, fogCol([236, 236, 240], dm, fogK, dk)); strip(a, b, hw - 0.35, hw, fogCol([236, 236, 240], dm, fogK, dk));
       if (kerb) {
@@ -2534,10 +2620,8 @@ button, input { font-family: inherit; }
         poly3(g, [edge(a, o, 0), edge(b, o, 0), edge(b, o, 1.15), edge(a, o, 1.15)], fogCol(wc, dm, fogK, dk));
         poly3(g, [edge(a, o, 1.15), edge(b, o, 1.15), edge(b, o + sd * 0.35, 1.15), edge(a, o + sd * 0.35, 1.15)], fogCol([220, 224, 230], dm, fogK, dk));
       });
+      if (sBuck[i]) { sBuck[i].sort(function (x, y) { return y.d - x.d; }); for (j = 0; j < sBuck[i].length; j++) sBuck[i][j].fn(); }
     }
-    /* things that stand up, painted far to near */
-    var items = [];
-    function addItem(dpt, fn) { if (dpt > 0.5) items.push({ d: dpt, fn: fn }); }
     /* pit lane, pit wall and garage building */
     var pitS = []; for (var ps = 0; ps <= PIT.len; ps += 10 / MPP) pitS.push(ps);
     var pitPts = pitS.map(function (ps2) { var q = at(PIT, ps2), q2 = at(PIT, ps2 + 4), q1 = at(PIT, ps2 - 4); var an = Math.atan2(q2.y - q1.y, q2.x - q1.x); return { x: q.x * MPP, y: q.y * MPP, c: Math.cos(an), n: Math.sin(an), s: ps2 }; });
@@ -2586,6 +2670,7 @@ button, input { font-family: inherit; }
         var rad = t.r * MPP * 1.6, pb2 = proj(X, Y, 0), pt = proj(X, Y, 7 + t.t * 5);
         if (!pb2 || !pt) return;
         var sr = CM.f * rad / dpt;
+        if (Q3.lvl < 2 && dpt < 300) { g.fillStyle = 'rgba(0,0,0,0.26)'; g.beginPath(); g.ellipse(pb2[0] + sr * 0.5, pb2[1], sr * 1.1, sr * 0.28, 0, 0, Math.PI * 2); g.fill(); }
         g.fillStyle = fogCol([58, 42, 28], dpt, fogK, dk); g.fillRect(pb2[0] - sr * 0.12, pt[1] + sr * 0.6, sr * 0.24, pb2[1] - pt[1] - sr * 0.4);
         g.fillStyle = fogCol(t.t > 0.5 ? [30, 78, 40] : [24, 66, 36], dpt, fogK, dk);
         g.beginPath(); g.arc(pt[0], pt[1] + sr * 0.2, sr, 0, Math.PI * 2); g.fill();
@@ -2615,51 +2700,6 @@ button, input { font-family: inherit; }
           }
         }
       });
-    })();
-    /* digital boards: an LED strip over the start lights, wall panels and billboards. All are fixed in the world and change every few laps */
-    (function () {
-      var ep = Math.max(0, Math.floor(lead.D / L / 3)) + season.round * 5, p0 = trackPose(START_D), X = p0.x * MPP, Y = p0.y * MPP, o = { x: X, y: Y, c: Math.cos(p0.a), n: Math.sin(p0.a) }, dptG = toCam(X, Y, 8)[2];
-      addItem(dptG - 0.5, function () {
-        var dd = Math.max(1, dptG);
-        [-1, 1].forEach(function (sd) { poly3(g, [edge(o, sd * (hw + 1.4), 7.2), edge(o, sd * (hw + 2.2), 7.2), edge(o, sd * (hw + 2.2), 9.7), edge(o, sd * (hw + 1.4), 9.7)], fogCol([38, 41, 48], dd, fogK, dk)); });
-        poly3(g, [edge(o, -hw - 2.2, 9.7), edge(o, hw + 2.2, 9.7), edge(o, hw + 2.2, 9.9), edge(o, -hw - 2.2, 9.9)], fogCol([44, 48, 56], dd, fogK, dk));
-        if (dd < 380) panelText(function (u, z) { var e = edge(o, -hw - 2.2 + 2 * (hw + 2.2) * u, z); return proj(e[0], e[1], e[2]); }, 2 * (hw + 2.2), 9.65, 7.45, '#08090B', ledText(ep), nowMs * 0.14);
-      });
-      var tl = L * MPP, m0 = sCar * MPP, k, nb = 0, nbMax = Q3.lvl ? 4 : 7, startM = (START_D * MPP) % tl;
-      /* billboards: angled towards the cars coming up the road */
-      var TH = 0.62, dS = 15 * Math.cos(TH), dL = 15 * Math.sin(TH);
-      for (k = Math.floor((m0 - 60) / 260); k <= Math.floor((m0 + 900) / 260) && nb < nbMax; k++) {
-        var cM = k * 260 + 130, cm = ((cM % tl) + tl) % tl;
-        if (cm > tl - 150 || Math.abs(cm - startM) < 45) continue;
-        var idx = Math.floor(cm / 260), sd = idx % 2 ? 1 : -1, sPx = cM / MPP, q = trackPose(sPx), wallOff = isKerbAt(sPx) ? 46 : 11, mag = hw + wallOff + 9;
-        var cx = q.x * MPP - Math.sin(q.a) * sd * mag, cy = q.y * MPP + Math.cos(q.a) * sd * mag, dptB = toCam(cx, cy, 6)[2];
-        if (dptB < 12 || dptB > (Q3.lvl ? 450 : 800)) continue;
-        nb++;
-        (function (idx, sd, cM, mag, dptB, led) {
-          addItem(dptB, function () {
-            var ad = adAt(idx * 2 + ep), fgd = Math.max(1, dptB);
-            function at(f, m2) { var q3 = trackPose((cM + dS * (2 * f - 1)) / MPP), off2 = sd * (mag + dL * (1 - 2 * f) + (m2 || 0)); return [q3.x * MPP - Math.sin(q3.a) * off2, q3.y * MPP + Math.cos(q3.a) * off2]; }
-            [0.12, 0.88].forEach(function (f) { var c0 = at(f, 0), q4 = trackPose(cM / MPP), dx = -Math.sin(q4.a) * 0.35, dy = Math.cos(q4.a) * 0.35; poly3(g, [[c0[0] - dx, c0[1] - dy, 0], [c0[0] + dx, c0[1] + dy, 0], [c0[0] + dx, c0[1] + dy, 11], [c0[0] - dx, c0[1] - dy, 11]], fogCol([60, 64, 72], fgd, fogK, dk)); });
-            var near = fgd < (Q3.lvl ? 260 : 520), pt = function (u, z) { var f = sd > 0 ? 1 - u : u, c1 = at(f, 0); return proj(c1[0], c1[1], z); };
-            if (led) panelText(pt, 30, 11, 5, '#08090B', near ? ledText(ep + idx) : [], nowMs * 0.1 + idx * 300);
-            else panelText(pt, 30, 11, 5, ad.bg, near ? [{ t: ad.n, c: ad.fg }] : [], 0);
-          });
-        })(idx, sd, cM, mag, dptB, idx % 3 === 2);
-      }
-      /* low wall panels, fixed 14 m panels on every other 28 m block, both sides, only close to the camera */
-      var wb0 = Math.floor((m0 - 20) / 28), wb1 = Math.floor((m0 + (Q3.lvl ? 110 : 230)) / 28);
-      for (k = wb0; k <= wb1; k++) {
-        [-1, 1].forEach(function (sd2) {
-          var cMw = k * 28 + 14, cmw = ((cMw % tl) + tl) % tl;
-          if (Math.abs(cmw - startM) < 20) return;
-          var sPxw = cMw / MPP, wOff = isKerbAt(sPxw) ? 46 : 11, offw = sd2 * (hw + wOff - 0.05), qw = trackPose(sPxw), cxw = qw.x * MPP - Math.sin(qw.a) * offw, cyw = qw.y * MPP + Math.cos(qw.a) * offw, dptW = toCam(cxw, cyw, 0.6)[2];
-          if (dptW < 8) return;
-          addItem(dptW + 0.2, function () {
-            var adw = adAt(Math.floor(cmw / 28) * 3 + (sd2 > 0 ? 1 : 0) + ep), sA2 = (sd2 > 0 ? cMw + 7 : cMw - 7) / MPP, sB2 = (sd2 > 0 ? cMw - 7 : cMw + 7) / MPP;
-            panelText(function (u, z) { var q5 = trackPose(sA2 + (sB2 - sA2) * u); return proj(q5.x * MPP - Math.sin(q5.a) * offw, q5.y * MPP + Math.cos(q5.a) * offw, z); }, 14, 1.1, 0.18, adw.bg, dptW < 130 ? [{ t: adw.n, c: adw.fg }] : [], 0);
-          });
-        });
-      }
     })();
     /* cars */
     var poses = {};
