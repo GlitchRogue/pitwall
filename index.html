@@ -1783,10 +1783,10 @@ button, input { font-family: inherit; }
   function buildMesh() {
     MESH = [
       pr(-2.6, 2.3, 0, 0.72, 0.62, 0.04, 0.1, 0.04, 0.1, 'floor'),               /* floor */
-      pr(-0.2, 2.9, 0, 0.3, 0.07, 0.16, 0.5, 0.2, 0.34, 'c1'),                    /* nose */
+      pr(-0.2, 2.9, 0, 0.3, 0.07, 0.16, 0.5, 0.2, 0.34, 'nose'),                  /* nose */
       pr(-1.0, 0.0, 0, 0.32, 0.3, 0.2, 0.52, 0.2, 0.56, 'c1'),                    /* monocoque */
-      pr(-2.5, -1.0, 0, 0.1, 0.3, 0.3, 0.62, 0.22, 0.7, 'c1'),                    /* engine cover */
-      pr(-0.9, 0.7, -0.62, 0.3, 0.34, 0.12, 0.55, 0.12, 0.5, 'c1'), pr(-0.9, 0.7, 0.62, 0.3, 0.34, 0.12, 0.55, 0.12, 0.5, 'c1'),  /* sidepods */
+      pr(-2.5, -1.0, 0, 0.1, 0.3, 0.3, 0.62, 0.22, 0.7, 'eng'),                   /* engine cover */
+      pr(-0.9, 0.7, -0.62, 0.3, 0.34, 0.12, 0.55, 0.12, 0.5, 'pod'), pr(-0.9, 0.7, 0.62, 0.3, 0.34, 0.12, 0.55, 0.12, 0.5, 'pod'),  /* sidepods */
       pr(0.7, 1.0, -0.62, 0.34, 0.3, 0.12, 0.5, 0.2, 0.42, 'dark'), pr(0.7, 1.0, 0.62, 0.34, 0.3, 0.12, 0.5, 0.2, 0.42, 'dark'),   /* intakes */
       pr(-1.4, -0.9, 0, 0.14, 0.14, 0.62, 0.98, 0.62, 1.0, 'carbon'),            /* airbox */
       pr(0.45, 0.8, 0, 0.17, 0.17, 0.56, 0.8, 0.56, 0.8, 'helmet'),               /* helmet */
@@ -1798,7 +1798,16 @@ button, input { font-family: inherit; }
       pr(-2.95, -2.35, -0.55, 0.02, 0.02, 0.3, 0.98, 0.3, 0.98, 'c2'), pr(-2.95, -2.35, 0.55, 0.02, 0.02, 0.3, 0.98, 0.3, 0.98, 'c2'), /* rear endplates */
       pr(-2.9, -2.4, 0, 0.35, 0.35, 0.4, 0.44, 0.4, 0.44, 'wing'),                /* beam wing */
       pr(-2.8, -2.7, 0, 0.1, 0.1, 0.45, 0.55, 0.45, 0.55, 'red'),                 /* rain light */
-      pr(1.45, 2.1, -0.62, 0.02, 0.02, 0.2, 0.28, 0.2, 0.28, 'arm'), pr(1.45, 2.1, 0.62, 0.02, 0.02, 0.2, 0.28, 0.2, 0.28, 'arm')
+      pr(1.45, 2.1, -0.62, 0.02, 0.02, 0.2, 0.28, 0.2, 0.28, 'arm'), pr(1.45, 2.1, 0.62, 0.02, 0.02, 0.2, 0.28, 0.2, 0.28, 'arm'),
+      /* livery: appended after the structural parts so cockpit mesh indices stay valid */
+      pr(0.3, 2.85, 0, 0.07, 0.03, 0.46, 0.488, 0.3426, 0.356, 'acc'),            /* nose stripe */
+      pr(1.9, 2.9, 0, 0.075, 0.035, 0.4, 0.44, 0.31, 0.35, 'tip'),                /* nose tip colour */
+      pr(-2.45, -1.05, 0, 0.04, 0.09, 0.6, 0.636, 0.68, 0.711, 'acc'),            /* engine cover stripe */
+      pr(-0.8, 0.65, -0.935, 0.03, 0.03, 0.2, 0.34, 0.2, 0.32, 'acc'), pr(-0.8, 0.65, 0.935, 0.03, 0.03, 0.2, 0.34, 0.2, 0.32, 'acc'),  /* sidepod flash */
+      pr(2.7, 2.95, 0, 0.88, 0.88, 0.12, 0.155, 0.12, 0.155, 'acc'),              /* front wing flap */
+      pr(-2.85, -2.4, 0, 0.5, 0.5, 0.98, 1.0, 0.98, 1.0, 'acc'),                  /* rear wing top edge */
+      pr(-1.4, -0.9, 0, 0.141, 0.141, 0.9, 0.97, 0.9, 0.99, 'eng'),               /* airbox scoop in body colour */
+      pr(0.2, 0.55, 0, 0.19, 0.19, 0.5, 0.56, 0.5, 0.56, 'pod')                   /* cockpit rim */
     ];
     MESH_LOW = [
       pr(-2.6, 2.9, 0, 0.62, 0.1, 0.06, 0.55, 0.06, 0.3, 'c1'),
@@ -1809,9 +1818,26 @@ button, input { font-family: inherit; }
   }
   var WHEELS = [[1.9, -0.82, 0.33, 0.3], [1.9, 0.82, 0.33, 0.3], [-1.55, -0.8, 0.36, 0.42], [-1.55, 0.8, 0.36, 0.42]];
   var LIGHT = (function () { var l = [-0.45, -0.3, 0.84], m = Math.sqrt(l[0] * l[0] + l[1] * l[1] + l[2] * l[2]); return [l[0] / m, l[1] / m, l[2] / m]; })();
+  /* team liveries: body, nose, engine cover, sidepods, accent stripes, nose tip */
+  var LIV = {
+    ferrari:  { c1: '#E8002D', nose: '#E8002D', eng: '#E8002D', pod: '#E8002D', acc: '#FFFFFF', tip: '#FFE600' },
+    redbull:  { c1: '#1B2A6B', nose: '#1B2A6B', eng: '#16225A', pod: '#1B2A6B', acc: '#E8102F', tip: '#FFC400' },
+    mercedes: { c1: '#B9C0C8', nose: '#B9C0C8', eng: '#9AA2AB', pod: '#101114', acc: '#00D2BE', tip: '#00D2BE' },
+    mclaren:  { c1: '#FF8000', nose: '#FF8000', eng: '#FF8000', pod: '#FF8000', acc: '#47C7FC', tip: '#47C7FC' },
+    aston:    { c1: '#00755A', nose: '#00755A', eng: '#00755A', pod: '#00755A', acc: '#CEDC00', tip: '#CEDC00' },
+    alpine:   { c1: '#0A4DB5', nose: '#0A4DB5', eng: '#0A4DB5', pod: '#0A4DB5', acc: '#FF87BC', tip: '#FF87BC' },
+    williams: { c1: '#0F3F96', nose: '#0F3F96', eng: '#0F3F96', pod: '#0F3F96', acc: '#5BB6FF', tip: '#FFFFFF' },
+    haas:     { c1: '#F0F1F3', nose: '#F0F1F3', eng: '#15171B', pod: '#F0F1F3', acc: '#E6002B', tip: '#15171B' },
+    rbulls:   { c1: '#EEF1FF', nose: '#2447B5', eng: '#EEF1FF', pod: '#2447B5', acc: '#E8102F', tip: '#2447B5' },
+    audi:     { c1: '#B3B9C1', nose: '#B3B9C1', eng: '#15171B', pod: '#15171B', acc: '#F50537', tip: '#F50537' },
+    cadillac: { c1: '#22262E', nose: '#22262E', eng: '#22262E', pod: '#22262E', acc: '#D6DBE2', tip: '#D6DBE2' }
+  };
   function meshColor(col, tm, tyreCol) {
+    var lv = LIV[tm.id];
+    if (lv && lv[col]) return rgbOf(lv[col]);
     switch (col) {
       case 'c1': return rgbOf(tm.c1); case 'c2': return rgbOf(tm.c2);
+      case 'nose': case 'eng': case 'pod': return rgbOf(tm.c1); case 'acc': case 'tip': return rgbOf(tm.c2);
       case 'floor': return [14, 15, 18]; case 'dark': return [8, 9, 11]; case 'carbon': return [28, 30, 35];
       case 'helmet': return [235, 235, 238]; case 'wing': return [20, 21, 25]; case 'red': return [255, 42, 31]; case 'arm': return [70, 74, 82];
       case 'tyre': return [12, 12, 14]; case 'ring': return rgbOf(tyreCol || '#FFD400');
