@@ -2578,6 +2578,35 @@ button, input { font-family: inherit; }
         }
       });
     })();
+    /* LED board above the start lights, and big billboards behind the walls, some of them scrolling */
+    (function () {
+      var p0 = trackPose(START_D), X = p0.x * MPP, Y = p0.y * MPP, o = { x: X, y: Y, c: Math.cos(p0.a), n: Math.sin(p0.a) }, dptG = toCam(X, Y, 8)[2];
+      addItem(dptG - 0.5, function () {
+        var dd = Math.max(1, dptG);
+        [-1, 1].forEach(function (sd) { poly3(g, [edge(o, sd * (hw + 1.4), 7.2), edge(o, sd * (hw + 2.2), 7.2), edge(o, sd * (hw + 2.2), 9.7), edge(o, sd * (hw + 1.4), 9.7)], fogCol([38, 41, 48], dd, fogK, dk)); });
+        poly3(g, [edge(o, -hw - 2.2, 9.7), edge(o, hw + 2.2, 9.7), edge(o, hw + 2.2, 9.9), edge(o, -hw - 2.2, 9.9)], fogCol([44, 48, 56], dd, fogK, dk));
+        if (dd < 380) panelText(function (u, z) { var e = edge(o, -hw - 2.2 + 2 * (hw + 2.2) * u, z); return proj(e[0], e[1], e[2]); }, 2 * (hw + 2.2), 9.65, 7.45, '#08090B', ledText(), nowMs * 0.14);
+      });
+      var tl = L * MPP, m0 = sCar * MPP, k, nb = 0;
+      for (k = Math.floor((m0 - 80) / 260); k <= Math.floor((m0 + 900) / 260) && nb < 6; k++) {
+        var cM = k * 260 + 130, cm = ((cM % tl) + tl) % tl;
+        if (cm > tl - 150 || Math.abs(cm - ((START_D * MPP) % tl)) < 45) continue;
+        var idx = Math.floor(cm / 260), sd = idx % 2 ? 1 : -1, sPx = cM / MPP, q = trackPose(sPx), wallOff = isKerbAt(sPx) ? 46 : 11, off = sd * (hw + wallOff + 7);
+        var cx = q.x * MPP - Math.sin(q.a) * off, cy = q.y * MPP + Math.cos(q.a) * off, dptB = toCam(cx, cy, 6)[2];
+        if (dptB < 6 || dptB > (Q3.lvl ? 500 : 900)) continue;
+        nb++;
+        (function (idx, sd, cM, off, dptB, led) {
+          addItem(dptB, function () {
+            var sA = (sd > 0 ? cM + 15 : cM - 15) / MPP, sB = (sd > 0 ? cM - 15 : cM + 15) / MPP, spn = SPONSORS[idx % SPONSORS.length], fg = Math.max(1, dptB);
+            [-1, 1].forEach(function (e) { var s2 = (cM + e * 12) / MPP, q2 = trackPose(s2), ox = q2.x * MPP - Math.sin(q2.a) * off, oy = q2.y * MPP + Math.cos(q2.a) * off, pr = { x: ox, y: oy, c: Math.cos(q2.a), n: Math.sin(q2.a) };
+              poly3(g, [edge(pr, -0.3, 0), edge(pr, 0.3, 0), edge(pr, 0.3, 11), edge(pr, -0.3, 11)], fogCol([60, 64, 72], fg, fogK, dk)); });
+            var near = fg < (Q3.lvl ? 260 : 520), pt = function (u, z) { var q3 = trackPose(sA + (sB - sA) * u); return proj(q3.x * MPP - Math.sin(q3.a) * off, q3.y * MPP + Math.cos(q3.a) * off, z); };
+            if (led) panelText(pt, 30, 11, 5, '#08090B', near ? ledText() : [], nowMs * 0.1 + idx * 300);
+            else panelText(pt, 30, 11, 5, spn.bg, near ? [{ t: spn.n, c: spn.fg }] : [], 0);
+          });
+        })(idx, sd, cM, off, dptB, idx % 3 === 2);
+      }
+    })();
     /* cars */
     var poses = {};
     R.cars.forEach(function (car) {
@@ -2665,6 +2694,35 @@ button, input { font-family: inherit; }
     g.fillStyle = sp.fg; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '800 ' + fs + 'px "Barlow Condensed", Arial, sans-serif';
     var w = g.measureText(sp.n).width; if (w > 900) { fs = fs * 900 / w; g.font = '800 ' + fs + 'px "Barlow Condensed", Arial, sans-serif'; }
     g.fillText(sp.n, W / 2, H * 0.52); g.restore();
+  }
+  /* a flat sign: filled background, then a row of coloured text, either centred or scrolling like an LED board */
+  function panelText(pt, lenM, zT, zB, bg, segs, scroll) {
+    var g = ctx;
+    var p0 = pt(0, zT), p1 = pt(1, zT), p3 = pt(0, zB);
+    if (!p0 || !p1 || !p3) return;
+    var W = 1000, H = Math.max(40, W * (zT - zB) / Math.max(1, lenM)), fs = H * 0.62, i, tot = 0, ws = [];
+    g.save(); g.transform((p1[0] - p0[0]) / W, (p1[1] - p0[1]) / W, (p3[0] - p0[0]) / H, (p3[1] - p0[1]) / H, p0[0], p0[1]);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    if (!segs.length) { g.restore(); return; }
+    g.beginPath(); g.rect(0, 0, W, H); g.clip();
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '800 ' + fs + 'px "Barlow Condensed", Arial, sans-serif';
+    for (i = 0; i < segs.length; i++) { ws[i] = g.measureText(segs[i].t).width; tot += ws[i]; }
+    if (!scroll) {
+      if (tot > W * 0.92) { fs *= W * 0.92 / tot; g.font = '800 ' + fs + 'px "Barlow Condensed", Arial, sans-serif'; tot = W * 0.92; for (i = 0; i < segs.length; i++) ws[i] = g.measureText(segs[i].t).width; }
+      var x = (W - tot) / 2; for (i = 0; i < segs.length; i++) { g.fillStyle = segs[i].c; g.fillText(segs[i].t, x, H * 0.54); x += ws[i]; }
+    } else {
+      var x0 = -(scroll % tot); if (x0 > 0) x0 -= tot;
+      for (var rep = 0; x0 + rep * tot < W + tot && rep < 6; rep++) { var xx = x0 + rep * tot; for (i = 0; i < segs.length; i++) { g.fillStyle = segs[i].c; g.fillText(segs[i].t, xx, H * 0.54); xx += ws[i]; } }
+    }
+    g.restore();
+  }
+  /* what the LED boards say: the Grand Prix, then the partners */
+  var ledSegs = null, ledFor = '';
+  function ledText() {
+    if (ledSegs && ledFor === CUR.id) return ledSegs;
+    ledFor = CUR.id; ledSegs = [{ t: String(CUR.gp || 'Grand Prix').toUpperCase() + '     ', c: '#FFFFFF' }];
+    SPONSORS.forEach(function (s) { ledSegs.push({ t: s.n + '  ', c: s.bg === '#F2F2F2' ? '#FFFFFF' : s.bg }); ledSegs.push({ t: s.t.toUpperCase() + '     ', c: 'rgba(255,255,255,0.7)' }); });
+    return ledSegs;
   }
   function drawSpeedHud(g, W, H, kmh, gear, lead) {
     var s = W / 1000, x = 18 * s, y = H - 22 * s, ga = gapAhead(lead);
