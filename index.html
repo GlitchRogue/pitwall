@@ -1671,7 +1671,9 @@ button, input { font-family: inherit; }
   /* ---------- timer machine ---------- */
   function run() { S.running = true; S.endAt = Date.now() + S.remaining; }
   function pause() { S.remaining = getRem(); S.running = false; }
+  var LITN = 0;
   function setLights(n) {
+    LITN = n;
     var cols = $('gantry').children;
     for (var i = 0; i < cols.length; i++) cols[i].classList.toggle('on', i < n);
   }
@@ -2385,6 +2387,19 @@ button, input { font-family: inherit; }
         [-1, 1].forEach(function (sd) { poly3(g, [edge(o, sd * (hw + 1.4), 0), edge(o, sd * (hw + 2.2), 0), edge(o, sd * (hw + 2.2), 7.2), edge(o, sd * (hw + 1.4), 7.2)], fogCol([38, 41, 48], dd3, fogK, dk)); });
         poly3(g, [edge(o, -hw - 2.2, 7.2), edge(o, hw + 2.2, 7.2), edge(o, hw + 2.2, 8.6), edge(o, -hw - 2.2, 8.6)], fogCol([44, 48, 56], dd3, fogK, dk));
         poly3(g, [edge(o, -hw - 2.2, 6.6), edge(o, hw + 2.2, 6.6), edge(o, hw + 2.2, 7.2), edge(o, -hw - 2.2, 7.2)], fogCol([22, 24, 28], dd3, fogK, dk));
+        /* the five start light pods, lit in step with the real sequence */
+        for (var pi = 0; pi < 5; pi++) {
+          var po = (pi - 2) * 2.4, on = pi < LITN;
+          poly3(g, [edge(o, po - 0.8, 4.9), edge(o, po + 0.8, 4.9), edge(o, po + 0.8, 6.7), edge(o, po - 0.8, 6.7)], fogCol([14, 15, 18], dd3, fogK, dk));
+          for (var li = 0; li < 2; li++) {
+            var ez = li ? 5.5 : 6.1, pc = proj(o.x - o.n * po, o.y + o.c * po, ez);
+            if (!pc) continue;
+            var lr = Math.max(1.2, CM.f * 0.34 / dd3);
+            if (on) { g.fillStyle = 'rgba(255,30,20,0.28)'; g.beginPath(); g.arc(pc[0], pc[1], lr * 2.6, 0, Math.PI * 2); g.fill(); }
+            g.fillStyle = on ? '#FF2A1E' : '#2A0B0B'; g.beginPath(); g.arc(pc[0], pc[1], lr, 0, Math.PI * 2); g.fill();
+            if (on) { g.fillStyle = 'rgba(255,200,190,0.8)'; g.beginPath(); g.arc(pc[0] - lr * 0.25, pc[1] - lr * 0.25, lr * 0.35, 0, Math.PI * 2); g.fill(); }
+          }
+        }
       });
     })();
     /* cars */
