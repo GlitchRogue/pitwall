@@ -1447,7 +1447,7 @@ button, input { font-family: inherit; }
         } else {
           want = oo.lat + it.side * m2p(2.6);
           if (_ci >= 0 || _dn < 260) shT = clamp(1.5 + 7 * tr.ag + clamp(it.adv * 12, -3, 5), 0, 13) * (it.ins ? 1 : 0.5);
-          if (mine && !it.said && c.radT <= 0 && _ci < 0 && _dn < 120 && gg < 25) { it.said = true; c.radT = 25; radio(c.name + ' goes for the ' + (it.ins ? 'inside' : 'outside') + ' of ' + oo.name + '.', true); }
+          if (mine && !it.said && c.radT <= 0 && _ci < 0 && _dn < 120 && gg < 25) { it.said = true; c.radT = 25; radio(c.name + ' goes for the ' + (it.ins ? 'inside' : 'outside') + ' of ' + oo.name + '.', false); }
         }
       }
       /* defend: cover the inside once, take the inside line through that corner, never move again under braking */
