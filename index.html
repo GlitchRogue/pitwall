@@ -2116,6 +2116,21 @@ button, input { font-family: inherit; }
     var s = W / 1000, cx = W / 2, pos = lead.pos || 0;
     var dh = angDiff(headAt(physS(lead) + 30 / MPP), headAt(physS(lead))), steerA = clamp(dh * 4.2, -1.3, 1.3);
     g.save();
+    /* solid nose and bonnet in team colours so the car is not see-through */
+    var c1 = lead.team.c1, c2 = lead.team.c2;
+    var ny0 = H * 0.66;
+    var bg = g.createLinearGradient(0, ny0, 0, H);
+    bg.addColorStop(0, shadeRGB(rgbOf(c1), 1.05)); bg.addColorStop(1, shadeRGB(rgbOf(c1), 0.55));
+    g.fillStyle = bg; g.beginPath();
+    g.moveTo(cx - 20 * s, ny0); g.lineTo(cx + 20 * s, ny0);
+    g.quadraticCurveTo(cx + 120 * s, H * 0.82, cx + 330 * s, H * 0.97); g.lineTo(cx + 380 * s, H + 6); g.lineTo(cx - 380 * s, H + 6); g.lineTo(cx - 330 * s, H * 0.97);
+    g.quadraticCurveTo(cx - 120 * s, H * 0.82, cx - 20 * s, ny0); g.closePath(); g.fill();
+    g.fillStyle = shadeRGB(rgbOf(c2), 0.9); g.beginPath();
+    g.moveTo(cx - 5 * s, ny0 + 2); g.lineTo(cx + 5 * s, ny0 + 2); g.lineTo(cx + 34 * s, H); g.lineTo(cx - 34 * s, H); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.14)'; g.beginPath(); g.moveTo(cx - 20 * s, ny0); g.quadraticCurveTo(cx - 120 * s, H * 0.82, cx - 330 * s, H * 0.97); g.lineTo(cx - 300 * s, H * 0.97); g.quadraticCurveTo(cx - 110 * s, H * 0.8, cx - 18 * s, ny0 + 2); g.closePath(); g.fill();
+    /* front wing tips peeking past the nose */
+    g.fillStyle = '#14161A';
+    [-1, 1].forEach(function (sd) { g.beginPath(); g.moveTo(cx + sd * 40 * s, ny0 - 6); g.lineTo(cx + sd * 150 * s, ny0 - 2); g.lineTo(cx + sd * 150 * s, ny0 + 8); g.lineTo(cx + sd * 40 * s, ny0 + 4); g.closePath(); g.fill(); });
     /* halo pillar and arms */
     g.fillStyle = '#16181C';
     g.beginPath(); g.moveTo(cx - 16 * s, H * 0.62); g.lineTo(cx - 9 * s, H * 0.2); g.lineTo(cx + 9 * s, H * 0.2); g.lineTo(cx + 16 * s, H * 0.62); g.closePath(); g.fill();
