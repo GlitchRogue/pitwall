@@ -309,6 +309,11 @@ button, input { font-family: inherit; }
 .rpbar { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
 .rpbar span { flex: 1; font: 600 13px/1.3 var(--display); letter-spacing: 0.05em; text-transform: uppercase; }
 .rpbar button { height: 32px; padding: 0 12px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--fg); cursor: pointer; font: 600 12px/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; }
+.fsbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; font: 500 13px/1.3 var(--body); color: var(--muted); }
+.fsbar[hidden] { display: none; }
+.fsbar .btn { height: 28px; padding: 0 12px; font-size: 12px; }
+.fsopt { border: 0; margin: 0 0 10px; padding: 0 0 8px; display: grid; gap: 6px; border-bottom: 1px solid var(--line, rgba(255,255,255,0.12)); }
+.fsopt legend { font: 700 12px/1 var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); padding: 0 0 6px; }
 </style>
 
 </head>
@@ -359,6 +364,7 @@ button, input { font-family: inherit; }
         <div class="trackwrap" id="wrap">
           <canvas id="cv" aria-label="Circuit with the full 22 car grid drawn to scale"></canvas>
         </div>
+        <div class="fsbar" id="fsBar" hidden><span id="fsMsg"></span><button type="button" class="btn ghost" id="fsPeek" hidden>Peek at the race (15 s)</button></div>
       </div>
 
       <div class="controls">
@@ -477,6 +483,12 @@ button, input { font-family: inherit; }
         <section class="panel">
           <h2>Race control</h2>
           <div class="opts">
+            <fieldset class="fsopt"><legend>Focus screen</legend>
+              <label for="o_fs0"><input id="o_fs0" type="radio" name="fsMode" value="0"> Off: the race stays on screen</label>
+              <label for="o_fs1"><input id="o_fs1" type="radio" name="fsMode" value="1"> Calm: a watch face while a stint runs, peek any time</label>
+              <label for="o_fs2"><input id="o_fs2" type="radio" name="fsMode" value="2"> Absolute: locked for the whole stint</label>
+              <p class="note" id="fsNote"></p>
+            </fieldset>
             <label for="optAuto"><input id="optAuto" type="checkbox"> Restart automatically when the break ends</label>
             <label for="optSound"><input id="optSound" type="checkbox"> Sounds (master switch)</label>
             <label for="o_sLights"><input id="o_sLights" type="checkbox"> Start light beeps</label>
@@ -595,7 +607,7 @@ button, input { font-family: inherit; }
   var POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 
   var LS_KEY = 'pitwall.v3';
-  var cfg = { team: 'ferrari', circuit: 'it-1922', preset: 'twostop', race: 90, every: 3, pit: 5, long: 15, auto: true, sound: true, sLights: true, sPit: true, sRadio: true, sBites: true, bite: 4, cam: 'map', focus: 0, seasonLen: 10, autoNext: true, v: 4 };
+  var cfg = { team: 'ferrari', circuit: 'it-1922', preset: 'twostop', race: 90, every: 3, pit: 5, long: 15, auto: true, sound: true, sLights: true, sPit: true, sRadio: true, sBites: true, bite: 4, cam: 'map', fs: 1, focus: 0, seasonLen: 10, autoNext: true, v: 4 };
   var season = { round: 0, startIdx: 0, pts: {}, credits: 0, up: { pu: 0, aero: 0, rel: 0, tyre: 0, fc: 0 }, results: [], year: 1, complete: false, nextId: null };
   var day = { date: dayKey(), stints: 0, gps: 0 };
 
@@ -2137,6 +2149,7 @@ button, input { font-family: inherit; }
   var lastTs = 0, rainT = 0;
   function paint(nowMs) {
     var dt = lastTs ? Math.min(0.1, (nowMs - lastTs) / 1000) : 0; lastTs = nowMs;
+    if (fsActive()) { drawFocusFace(nowMs); return; }
     if (is3D(cfg.cam)) { paint3D(nowMs, dt); return; }
     var k = cv.width / 1000, cs = cssScale();
     var lead = focusCar();
@@ -3033,6 +3046,211 @@ button, input { font-family: inherit; }
     g.restore();
   }
 
+  /* ---------- Focus screen: a chronograph watch face replaces the race view while a stint runs ----------
+     cfg.fs: 0 off, 1 calm (watch face while a stint runs, peek whenever), 2 absolute (locked for the whole stint).
+     While the face is up nothing from the 3D or map renderers is drawn, so it also saves work. The sim keeps running underneath. */
+  var FS = { peekUntil: 0, locked: false, cache: null, key: '', last: 0 };
+  function fsMode() { return cfg.fs == null ? 1 : cfg.fs; }
+  function fsActive() {
+    var m = fsMode();
+    if (S.phase !== 'focus') { FS.locked = false; return false; }
+    if (FS.locked && !S.running && !S.starting && S.remaining === S.dur) FS.locked = false;   /* reset or cancelled before the stint began */
+    if (m === 2 && (S.running || S.starting)) FS.locked = true;
+    if (FS.locked) return true;
+    if (m === 0 || !S.running || S.starting) return false;
+    return Date.now() >= FS.peekUntil;
+  }
+  function fsSet(m) {
+    if (FS.locked && S.phase === 'focus') return false;
+    cfg.fs = m;
+    if (m === 2 && S.phase === 'focus' && S.running) FS.locked = true;
+    save(); return true;
+  }
+  function fsFmt(sec) { var m = Math.floor(sec / 60), s = Math.floor(sec % 60); return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s; }
+
+  function fsBuildDial(g, W, H, cx, cy, R0) {
+    var Rd = R0 * 0.8, i, a, acc = TEAM.acc, TAU = Math.PI * 2, F = '"Barlow Condensed", Arial, sans-serif';
+    var bg = g.createRadialGradient(cx, cy, R0 * 0.3, cx, cy, Math.max(W, H) * 0.75); bg.addColorStop(0, '#0e1118'); bg.addColorStop(1, '#020304');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    /* strap */
+    var sw = R0 * 0.78, sg = g.createLinearGradient(cx - sw / 2, 0, cx + sw / 2, 0); sg.addColorStop(0, '#0a0b0d'); sg.addColorStop(0.5, '#1a1c21'); sg.addColorStop(1, '#0a0b0d');
+    g.fillStyle = sg; g.fillRect(cx - sw / 2, 0, sw, H);
+    g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 1;
+    for (i = 0; i < H; i += R0 * 0.06) { g.beginPath(); g.moveTo(cx - sw / 2, i); g.lineTo(cx + sw / 2, i); g.stroke(); }
+    g.setLineDash([R0 * 0.03, R0 * 0.03]); g.strokeStyle = 'rgba(255,255,255,0.14)';
+    [-0.42, 0.42].forEach(function (o) { g.beginPath(); g.moveTo(cx + sw * o, 0); g.lineTo(cx + sw * o, H); g.stroke(); }); g.setLineDash([]);
+    /* crown and pushers */
+    function stub(ang, len, wid, off) {
+      g.save(); g.translate(cx, cy); g.rotate(ang); var sgd = g.createLinearGradient(0, -wid / 2, 0, wid / 2); sgd.addColorStop(0, '#6a717c'); sgd.addColorStop(0.5, '#e9edf2'); sgd.addColorStop(1, '#5a616c');
+      g.fillStyle = sgd; g.fillRect(R0 * off, -wid / 2, len, wid); g.strokeStyle = 'rgba(0,0,0,0.4)'; for (var q = 0; q < 7; q++) { var xx = R0 * off + len * (q + 0.5) / 7; g.beginPath(); g.moveTo(xx, -wid / 2); g.lineTo(xx, wid / 2); g.stroke(); } g.restore();
+    }
+    stub(0, R0 * 0.09, R0 * 0.11, 0.98); stub(-0.52, R0 * 0.07, R0 * 0.07, 0.99); stub(0.52, R0 * 0.07, R0 * 0.07, 0.99);
+    /* case */
+    g.save(); g.shadowColor = 'rgba(0,0,0,0.7)'; g.shadowBlur = R0 * 0.12; g.shadowOffsetY = R0 * 0.05; g.fillStyle = '#000'; g.beginPath(); g.arc(cx, cy, R0, 0, TAU); g.fill(); g.restore();
+    var steel;
+    try { steel = g.createConicGradient(-0.6, cx, cy); [[0, '#eef1f5'], [0.12, '#6d7581'], [0.26, '#f7f9fb'], [0.4, '#59606b'], [0.54, '#e1e6ec'], [0.68, '#7b838f'], [0.82, '#f3f6f9'], [1, '#eef1f5']].forEach(function (s) { steel.addColorStop(s[0], s[1]); }); }
+    catch (e) { steel = g.createLinearGradient(cx - R0, cy - R0, cx + R0, cy + R0); steel.addColorStop(0, '#f1f4f8'); steel.addColorStop(0.5, '#69717d'); steel.addColorStop(1, '#e6eaef'); }
+    g.fillStyle = steel; g.beginPath(); g.arc(cx, cy, R0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.38)'; g.lineWidth = Math.max(1, R0 * 0.006);
+    for (i = 0; i < 120; i++) { a = i / 120 * TAU; g.beginPath(); g.moveTo(cx + Math.cos(a) * R0 * 0.972, cy + Math.sin(a) * R0 * 0.972); g.lineTo(cx + Math.cos(a) * R0 * 0.998, cy + Math.sin(a) * R0 * 0.998); g.stroke(); }
+    /* ceramic bezel with tachymeter */
+    g.fillStyle = '#08090c'; g.beginPath(); g.arc(cx, cy, R0 * 0.962, 0, TAU); g.fill();
+    var bz = g.createRadialGradient(cx, cy, R0 * 0.8, cx, cy, R0 * 0.962); bz.addColorStop(0, 'rgba(255,255,255,0.0)'); bz.addColorStop(1, 'rgba(255,255,255,0.07)'); g.fillStyle = bz; g.beginPath(); g.arc(cx, cy, R0 * 0.962, 0, TAU); g.fill();
+    g.fillStyle = '#e8ecf2'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '700 ' + R0 * 0.05 + 'px ' + F;
+    [60, 65, 70, 75, 80, 90, 100, 110, 120, 130, 140, 160, 180, 200, 250, 300, 400, 500].forEach(function (s) {
+      var ang = 21600 / s / 180 * Math.PI; g.save(); g.translate(cx, cy); g.rotate(ang); g.translate(0, -R0 * 0.875); g.fillText(String(s), 0, 0); g.restore();
+      g.strokeStyle = 'rgba(232,236,242,0.7)'; g.lineWidth = Math.max(1, R0 * 0.004); g.beginPath(); g.moveTo(cx + Math.sin(ang) * R0 * 0.8, cy - Math.cos(ang) * R0 * 0.8); g.lineTo(cx + Math.sin(ang) * R0 * 0.82, cy - Math.cos(ang) * R0 * 0.82); g.stroke();
+    });
+    g.fillStyle = acc; g.beginPath(); g.arc(cx, cy - R0 * 0.93, R0 * 0.022, 0, TAU); g.fill();
+    /* dial: team tinted, sunburst and fine concentric engraving */
+    var tc = rgbOf(acc), d0 = [16 + tc[0] * 0.05, 19 + tc[1] * 0.05, 27 + tc[2] * 0.05].map(Math.round);
+    var dg = g.createRadialGradient(cx - Rd * 0.25, cy - Rd * 0.3, Rd * 0.05, cx, cy, Rd); dg.addColorStop(0, 'rgb(' + (d0[0] + 20) + ',' + (d0[1] + 22) + ',' + (d0[2] + 28) + ')'); dg.addColorStop(1, 'rgb(' + d0.join(',') + ')');
+    g.fillStyle = dg; g.beginPath(); g.arc(cx, cy, Rd, 0, TAU); g.fill();
+    g.save(); g.beginPath(); g.arc(cx, cy, Rd, 0, TAU); g.clip();
+    g.fillStyle = 'rgba(255,255,255,0.026)';
+    for (i = 0; i < 180; i += 2) { a = i / 180 * TAU; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, Rd, a, a + TAU / 180); g.closePath(); g.fill(); }
+    g.strokeStyle = 'rgba(255,255,255,0.03)'; g.lineWidth = 1;
+    for (var rr = Rd * 0.04; rr < Rd; rr += R0 * 0.012) { g.beginPath(); g.arc(cx, cy, rr, 0, TAU); g.stroke(); }
+    g.restore();
+    g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = R0 * 0.012; g.beginPath(); g.arc(cx, cy, Rd, 0, TAU); g.stroke();
+    /* chapter ring */
+    for (i = 0; i < 240; i++) {
+      a = i / 240 * TAU; var ro = Rd * 0.965, ri = i % 4 === 0 ? ro - Rd * 0.04 : ro - Rd * 0.022;
+      g.strokeStyle = i % 20 === 0 ? 'rgba(255,255,255,0.0)' : i % 4 === 0 ? 'rgba(236,240,247,0.8)' : 'rgba(236,240,247,0.38)'; g.lineWidth = i % 4 === 0 ? Math.max(1, R0 * 0.005) : Math.max(0.6, R0 * 0.003);
+      g.beginPath(); g.moveTo(cx + Math.sin(a) * ro, cy - Math.cos(a) * ro); g.lineTo(cx + Math.sin(a) * ri, cy - Math.cos(a) * ri); g.stroke();
+    }
+    /* applied indexes with lume */
+    for (i = 0; i < 12; i++) {
+      g.save(); g.translate(cx, cy); g.rotate(i / 12 * TAU);
+      var y0 = -Rd * 0.88, y1 = -Rd * 0.7, bw = Rd * (i % 3 === 0 ? 0.06 : 0.04);
+      var mg = g.createLinearGradient(-bw, 0, bw, 0); mg.addColorStop(0, '#79808c'); mg.addColorStop(0.5, '#f5f7fa'); mg.addColorStop(1, '#6a717d');
+      g.fillStyle = mg;
+      if (i === 0) { g.beginPath(); g.moveTo(-bw * 1.3, y1); g.lineTo(bw * 1.3, y1); g.lineTo(0, y0); g.closePath(); g.fill(); g.fillStyle = '#d3ecc6'; g.beginPath(); g.moveTo(-bw * 0.7, y1 - Rd * 0.012); g.lineTo(bw * 0.7, y1 - Rd * 0.012); g.lineTo(0, y0 + Rd * 0.05); g.closePath(); g.fill(); }
+      else { g.fillRect(-bw, y0, bw * 2, y1 - y0); g.fillStyle = '#d3ecc6'; g.fillRect(-bw * 0.55, y0 + Rd * 0.014, bw * 1.1, y1 - y0 - Rd * 0.028); }
+      g.restore();
+    }
+    /* subdials */
+    function sub(sx, sy, r, scale) {
+      var sd = g.createRadialGradient(sx, sy, r * 0.1, sx, sy, r); sd.addColorStop(0, '#0f1218'); sd.addColorStop(1, '#07090d'); g.fillStyle = sd; g.beginPath(); g.arc(sx, sy, r, 0, TAU); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 1; for (var q = r * 0.12; q < r * 0.9; q += r * 0.07) { g.beginPath(); g.arc(sx, sy, q, 0, TAU); g.stroke(); }
+      g.strokeStyle = 'rgba(205,211,222,0.55)'; g.lineWidth = Math.max(1.2, R0 * 0.006); g.beginPath(); g.arc(sx, sy, r, 0, TAU); g.stroke();
+      g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = Math.max(1, R0 * 0.004); g.beginPath(); g.arc(sx, sy, r * 1.04, 0, TAU); g.stroke();
+      scale(sx, sy, r);
+    }
+    function ticks(sx, sy, r, n, labelAt, fmt) {
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (var q = 0; q < n; q++) {
+        var an = q / n * TAU, big = labelAt(q);
+        g.strokeStyle = big ? 'rgba(240,244,250,0.95)' : 'rgba(240,244,250,0.5)'; g.lineWidth = big ? Math.max(1.2, R0 * 0.005) : Math.max(0.7, R0 * 0.003);
+        g.beginPath(); g.moveTo(sx + Math.sin(an) * r * 0.92, sy - Math.cos(an) * r * 0.92); g.lineTo(sx + Math.sin(an) * r * (big ? 0.76 : 0.83), sy - Math.cos(an) * r * (big ? 0.76 : 0.83)); g.stroke();
+        if (big) { g.fillStyle = '#eef2f8'; g.font = '700 ' + r * 0.17 + 'px ' + F; g.fillText(fmt(q), sx + Math.sin(an) * r * 0.58, sy - Math.cos(an) * r * 0.58); }
+      }
+    }
+    var rs = Rd * 0.22, nmin = Math.max(1, Math.round(S.dur / 60000)), gm = Math.max(1, Math.round(gpSec() / 60)), tcount = Math.min(nmin, 60), rcount = 30;
+    sub(cx - Rd * 0.38, cy, rs, function (sx, sy, r) {
+      ticks(sx, sy, r, tcount, function (q) { return q % Math.max(1, Math.round(tcount / 4)) === 0; }, function (q) { return String(Math.round(q / tcount * nmin)); });
+      g.fillStyle = acc; g.font = '700 ' + r * 0.16 + 'px ' + F; g.textAlign = 'center'; g.fillText('STINT', sx, sy + r * 0.42);
+    });
+    sub(cx + Rd * 0.38, cy, rs, function (sx, sy, r) {
+      ticks(sx, sy, r, rcount, function (q) { return q % (rcount / 6) === 0; }, function (q) { return String(Math.round(q / rcount * gm)); });
+      g.fillStyle = '#cfd5de'; g.font = '700 ' + r * 0.16 + 'px ' + F; g.textAlign = 'center'; g.fillText('RACE', sx, sy + r * 0.42);
+    });
+    sub(cx, cy + Rd * 0.42, rs, function (sx, sy, r) {
+      for (var q = 0; q < 22; q++) {
+        var an = (-110 + 220 * q / 21) * Math.PI / 180, big = q === 0 || q === 4 || q === 9 || q === 14 || q === 21;
+        g.strokeStyle = big ? 'rgba(240,244,250,0.95)' : 'rgba(240,244,250,0.45)'; g.lineWidth = big ? Math.max(1.2, R0 * 0.005) : Math.max(0.7, R0 * 0.003);
+        g.beginPath(); g.moveTo(sx + Math.sin(an) * r * 0.92, sy - Math.cos(an) * r * 0.92); g.lineTo(sx + Math.sin(an) * r * (big ? 0.74 : 0.82), sy - Math.cos(an) * r * (big ? 0.74 : 0.82)); g.stroke();
+        if (big) { g.fillStyle = '#eef2f8'; g.font = '700 ' + r * 0.17 + 'px ' + F; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(q + 1), sx + Math.sin(an) * r * 0.57, sy - Math.cos(an) * r * 0.57); }
+      }
+      g.fillStyle = '#cfd5de'; g.font = '700 ' + r * 0.16 + 'px ' + F; g.textAlign = 'center'; g.fillText('POSITION', sx, sy + r * 0.5);
+    });
+    /* apertures */
+    function win(wx, wy, ww, wh) {
+      var fg = g.createLinearGradient(0, wy - wh / 2, 0, wy + wh / 2); fg.addColorStop(0, '#f1f4f8'); fg.addColorStop(0.5, '#8d95a2'); fg.addColorStop(1, '#dfe4ea');
+      g.fillStyle = fg; g.fillRect(wx - ww / 2 - R0 * 0.012, wy - wh / 2 - R0 * 0.012, ww + R0 * 0.024, wh + R0 * 0.024);
+      g.fillStyle = '#04060a'; g.fillRect(wx - ww / 2, wy - wh / 2, ww, wh);
+    }
+    win(cx, cy - Rd * 0.4, Rd * 0.5, Rd * 0.17);
+    win(cx + Rd * 0.45, cy + Rd * 0.42, Rd * 0.3, Rd * 0.1);
+    /* wording */
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#f2f5fa'; g.font = '800 ' + Rd * 0.085 + 'px ' + F; g.fillText('P I T W A L L', cx, cy - Rd * 0.64);
+    g.fillStyle = acc; g.font = '700 ' + Rd * 0.045 + 'px ' + F; g.fillText(('CHRONOGRAPH  ·  ' + TEAM.name).toUpperCase(), cx, cy - Rd * 0.565);
+    g.fillStyle = 'rgba(220,226,236,0.6)'; g.font = '600 ' + Rd * 0.035 + 'px ' + F; g.fillText(String(CUR.gp || 'GRAND PRIX').toUpperCase(), cx, cy + Rd * 0.66);
+  }
+
+  function fsHand(g, cx, cy, ang, len, tail, wid, R0, lume, pulse) {
+    var off = R0 * 0.018;
+    function shape() { g.beginPath(); g.moveTo(-wid / 2, tail); g.lineTo(-wid / 2, -len * 0.8); g.lineTo(0, -len); g.lineTo(wid / 2, -len * 0.8); g.lineTo(wid / 2, tail); g.closePath(); }
+    g.save(); g.translate(cx + off, cy + off * 1.4); g.rotate(ang); g.fillStyle = 'rgba(0,0,0,0.32)'; shape(); g.fill(); g.restore();
+    g.save(); g.translate(cx, cy); g.rotate(ang);
+    var mg = g.createLinearGradient(-wid / 2, 0, wid / 2, 0); mg.addColorStop(0, '#8b929e'); mg.addColorStop(0.5, '#fbfcfd'); mg.addColorStop(1, '#757c88');
+    g.fillStyle = mg; shape(); g.fill();
+    if (lume) { g.globalAlpha = pulse; g.fillStyle = '#d3ecc6'; g.fillRect(-wid * 0.22, -len * 0.74, wid * 0.44, len * 0.6); g.globalAlpha = 1; }
+    g.restore();
+  }
+  function fsSubHand(g, sx, sy, ang, len, wid, col, R0) {
+    g.save(); g.translate(sx + R0 * 0.008, sy + R0 * 0.012); g.rotate(ang); g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = wid; g.beginPath(); g.moveTo(0, len * 0.18); g.lineTo(0, -len); g.stroke(); g.restore();
+    g.save(); g.translate(sx, sy); g.rotate(ang); g.strokeStyle = col; g.lineWidth = wid; g.lineCap = 'round'; g.beginPath(); g.moveTo(0, len * 0.18); g.lineTo(0, -len); g.stroke(); g.restore();
+    g.fillStyle = '#e8ecf2'; g.beginPath(); g.arc(sx, sy, wid * 1.6, 0, Math.PI * 2); g.fill();
+  }
+
+  function drawFocusFace(nowMs) {
+    if (nowMs - FS.last < 38) return;
+    FS.last = nowMs;
+    var g = ctx, W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, R0 = Math.min(W, H) * 0.47, Rd = R0 * 0.8, TAU = Math.PI * 2, F = '"Barlow Condensed", Arial, sans-serif';
+    var key = W + 'x' + H + '|' + TEAM.id + '|' + Math.round(S.dur / 1000) + '|' + gpSec() + '|' + CUR.id;
+    if (!FS.cache || FS.key !== key) { FS.cache = document.createElement('canvas'); FS.cache.width = W; FS.cache.height = H; fsBuildDial(FS.cache.getContext('2d'), W, H, cx, cy, R0); FS.key = key; }
+    g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(FS.cache, 0, 0);
+    var rem = getRem(), elapsed = Math.max(0, S.dur - rem), now = new Date(), ms = now.getMilliseconds(), sec = now.getSeconds() + ms / 1000, mn = now.getMinutes() + sec / 60, hr = (now.getHours() % 12) + mn / 60;
+    var rs = Rd * 0.22, acc = TEAM.acc, lead = focusCar(), pos = lead && lead.pos ? lead.pos : 1;
+    /* subdial hands */
+    fsSubHand(g, cx - Rd * 0.38, cy, clamp(elapsed / Math.max(1, S.dur), 0, 1) * TAU, rs * 0.82, Math.max(1.4, R0 * 0.008), acc, R0);
+    fsSubHand(g, cx + Rd * 0.38, cy, clamp(R.raceT / Math.max(1, gpSec()), 0, 1) * TAU, rs * 0.82, Math.max(1.4, R0 * 0.008), '#f1f4f8', R0);
+    fsSubHand(g, cx, cy + Rd * 0.42, (-110 + 220 * (clamp(pos, 1, 22) - 1) / 21) * Math.PI / 180, rs * 0.84, Math.max(1.4, R0 * 0.008), acc, R0);
+    /* windows */
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    var paused = !S.running && !S.starting;
+    g.fillStyle = paused ? '#FFB020' : '#F5F7FA'; g.font = '700 ' + Rd * 0.14 + 'px ' + F;
+    g.fillText(paused ? 'PAUSED' : fsFmt(Math.ceil(rem / 1000)), cx, cy - Rd * 0.4 + Rd * 0.006);
+    g.fillStyle = '#E9EDF3'; g.font = '700 ' + Rd * 0.07 + 'px ' + F;
+    g.fillText(['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][now.getDay()] + ' ' + now.getDate(), cx + Rd * 0.45, cy + Rd * 0.42 + Rd * 0.004);
+    /* hands: hour and minute show the time of day, the red sweep hand counts the stint */
+    var pulse = 0.82 + 0.18 * Math.sin(nowMs / 900);
+    fsHand(g, cx, cy, hr / 12 * TAU, Rd * 0.5, Rd * 0.1, Rd * 0.06, R0, true, pulse);
+    fsHand(g, cx, cy, mn / 60 * TAU, Rd * 0.78, Rd * 0.1, Rd * 0.045, R0, true, pulse);
+    var sa = ((elapsed / 1000) % 60) / 60 * TAU, red = '#E10600';
+    g.save(); g.translate(cx + R0 * 0.012, cy + R0 * 0.018); g.rotate(sa); g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = Math.max(1.5, R0 * 0.01); g.beginPath(); g.moveTo(0, Rd * 0.22); g.lineTo(0, -Rd * 0.94); g.stroke(); g.restore();
+    g.save(); g.translate(cx, cy); g.rotate(sa); g.strokeStyle = red; g.fillStyle = red; g.lineWidth = Math.max(1.5, R0 * 0.01); g.lineCap = 'butt';
+    g.beginPath(); g.moveTo(0, Rd * 0.22); g.lineTo(0, -Rd * 0.94); g.stroke(); g.beginPath(); g.arc(0, Rd * 0.17, Rd * 0.032, 0, TAU); g.fill(); g.beginPath(); g.arc(0, -Rd * 0.72, Rd * 0.016, 0, TAU); g.fillStyle = '#fff'; g.fill(); g.restore();
+    var cg = g.createRadialGradient(cx - 2, cy - 2, 1, cx, cy, Rd * 0.05); cg.addColorStop(0, '#fff'); cg.addColorStop(1, '#7b828d'); g.fillStyle = cg; g.beginPath(); g.arc(cx, cy, Rd * 0.045, 0, TAU); g.fill();
+    g.fillStyle = red; g.beginPath(); g.arc(cx, cy, Rd * 0.02, 0, TAU); g.fill();
+    /* crystal glare drifting slowly across the dial */
+    g.save(); g.beginPath(); g.arc(cx, cy, Rd * 1.0, 0, TAU); g.clip();
+    var sh = Math.sin(nowMs / 9000) * Rd * 0.35, gl = g.createLinearGradient(cx - Rd + sh, cy - Rd, cx + sh * 0.3, cy);
+    gl.addColorStop(0, 'rgba(255,255,255,0)'); gl.addColorStop(0.5, 'rgba(255,255,255,0.055)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gl; g.fillRect(cx - Rd, cy - Rd, Rd * 2, Rd * 2); g.restore();
+  }
+
+  /* the small bar under the picture and the settings choice */
+  function renderFocus() {
+    var bar = $('fsBar'), on = fsActive(), m = fsMode(), note = $('fsNote'), i;
+    if (bar) {
+      var inFocus = S.phase === 'focus' && (S.running || FS.locked);
+      bar.hidden = !(inFocus && m > 0);
+      if (!bar.hidden) {
+        var pk = $('fsPeek'); pk.hidden = !(m === 1 && on);
+        setText($('fsMsg'), FS.locked ? 'Absolute focus: the race is hidden until this stint ends.' : on ? 'Focus screen on. The race keeps running underneath.' : 'Peeking at the race. The watch comes back by itself.');
+      }
+    }
+    for (i = 0; i < 3; i++) { var r = $('o_fs' + i); if (r) { r.checked = m === i; r.disabled = !!(FS.locked && S.phase === 'focus'); } }
+    if (note) setText(note, FS.locked && S.phase === 'focus' ? 'Locked until this stint ends.' : m === 2 ? 'Absolute starts locking when you press Start, and stays locked until the stint ends.' : m === 1 ? 'A watch face replaces the race while a stint runs. You can peek for 15 seconds.' : 'The race stays on screen all the time.');
+  }
+  (function wireFocus() {
+    var pk = $('fsPeek'); if (pk) pk.addEventListener('click', function () { if (fsMode() === 1) { FS.peekUntil = Date.now() + 15000; renderFocus(); } });
+    [0, 1, 2].forEach(function (i) { var r = $('o_fs' + i); if (r) r.addEventListener('change', function () { if (r.checked) fsSet(i); renderFocus(); }); });
+  })();
+
 
   /* ---------- UI helpers ---------- */
   function setText(el, s) { if (el._t !== s) { el._t = s; el.textContent = s; } }
@@ -3425,7 +3643,7 @@ button, input { font-family: inherit; }
     paint(ts || 0);
     renderUI();
     if ((ts || 0) - lastSlow > 250) {
-      lastSlow = ts || 0; renderTower(); renderStand(); renderSeason(); renderReplays();
+      lastSlow = ts || 0; renderTower(); renderStand(); renderSeason(); renderReplays(); renderFocus();
       if (TAB === 'strategy') renderStrategy();
     }
   }
