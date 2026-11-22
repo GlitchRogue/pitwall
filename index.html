@@ -3916,7 +3916,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     glTrees(W, S, N, hw, wet, todN);
     glPit(W, wet, todN);
     glStands(W, S, N, hw, todN);
-    if (todN) glLights(W, S, N, hw);
+    glLights(W, S, N, hw, !!(todN || todG), !!todN);
     glLandmarks(W, S, N, hw, wet, todN, todG);
   }
 
@@ -4001,13 +4001,13 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     var mr = new THREE.Mesh(accGeo(Roof), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 })); mr.castShadow = true; W.add(mr);
   }
 
-  function glLights(W, S, N, hw) {
+  function glLights(W, S, N, hw, lit, full) {
     /* floodlight poles with glow and light pools on the track */
     var step = Math.max(6, Math.round(45 / 3)), pos = [], i;
     for (i = 2; i < N - 2; i += step) [-1, 1].forEach(function (sd) { var off = sd * (hw + (S[i].k ? 48 : 14)); pos.push([S[i].x - S[i].n * off, S[i].y + S[i].c * off, sd, i]); });
     var pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.16, 0.26, 1, 6), new THREE.MeshStandardMaterial({ color: 0x9aa0aa, roughness: 0.5, metalness: 0.5 }), pos.length);
-    var head = new THREE.InstancedMesh(new THREE.BoxGeometry(2.6, 0.5, 1.2), new THREE.MeshBasicMaterial({ color: 0xfff1d0 }), pos.length);
-    var pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texGlow(), color: 0xffe2b0, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }), pos.length);
+    var head = new THREE.InstancedMesh(new THREE.BoxGeometry(2.6, 0.5, 1.2), new THREE.MeshBasicMaterial({ color: lit ? 0xfff1d0 : 0x8a909a }), pos.length);
+    var pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texGlow(), color: 0xffe2b0, transparent: true, opacity: full ? 0.55 : 0.3, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }), pos.length);
     var gp = new Float32Array(pos.length * 3), m4 = new THREE.Matrix4(), q4 = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
     pos.forEach(function (p, k) {
       var h = 16, tw = -Math.atan2(S[p[3]].n, S[p[3]].c);
@@ -4017,9 +4017,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       var pos2 = new THREE.Vector3(hx + S[p[3]].n * p[2] * 4, 0.06, hz - S[p[3]].c * p[2] * 4); m4.compose(pos2, q4, new THREE.Vector3(30, 30, 1)); pool.setMatrixAt(k, m4);
       gp[k * 3] = hx; gp[k * 3 + 1] = h + 0.2; gp[k * 3 + 2] = hz;
     });
-    W.add(pole); W.add(head); W.add(pool);
+    W.add(pole); W.add(head); if (!lit) return; W.add(pool);
     var gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.BufferAttribute(gp, 3));
-    var pts = new THREE.Points(gg, new THREE.PointsMaterial({ map: texGlow(), size: 22, color: 0xffe6b8, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false }));
+    var pts = new THREE.Points(gg, new THREE.PointsMaterial({ map: texGlow(), size: 22, color: 0xffe6b8, transparent: true, opacity: full ? 0.9 : 0.55, blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true, fog: false }));
     pts.frustumCulled = false; W.add(pts);
   }
 
@@ -4047,7 +4047,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       /* reflections for glossy paint and wet tarmac */
       var es = new THREE.Scene(); es.add(new THREE.Mesh(new THREE.SphereGeometry(100, 24, 12), GL.skyM)); var rt = GL.pm.fromScene(es, 0.02); if (GL.envRT) GL.envRT.dispose(); GL.envRT = rt; sc.environment = rt.texture;
       glBuild(wet, todN, todG, skyTop, skyHor);
-      GL.cars = {}; GL.carG = null;
+      GL.dusk = !!(todN || todG); GL.cars = {}; GL.carG = null;
     }
     GL.skyM.uniforms.uTime.value = nowMs / 1000;
     /* camera from the 2D rig */
@@ -4216,7 +4216,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       if (o.ring !== ring) { o.ring = ring; o.wh.forEach(function (w) { var t = texWheel(ring); w.m.material[1].map = t; w.m.material[2].map = t; w.m.material[1].needsUpdate = true; w.m.material[2].needsUpdate = true; }); }
     });
     /* headlight beam on the focus car at night, so the road ahead lights up */
-    if (todN) {
+    if (todN || GL.dusk) {
       if (!GL.spot) { GL.spot = new THREE.SpotLight(0xfff0d8, 400, 160, 0.45, 0.6, 1.5); sc.add(GL.spot); sc.add(GL.spot.target); }
       var lo = GL.cars[lead.code]; if (lo) { var lp = carPose(lead), ca = Math.cos(lp.a), sa = Math.sin(lp.a); GL.spot.position.set(lp.x * MPP + ca * 2.2, 0.55, lp.y * MPP + sa * 2.2); GL.spot.target.position.set(lp.x * MPP + ca * 40, 0, lp.y * MPP + sa * 40); GL.spot.visible = true; }
     } else if (GL.spot) GL.spot.visible = false;
@@ -4237,7 +4237,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
   function glLandmarks(W, S, N, hw, wet, todN, todG) {
     if (SC.id !== CUR.id) scBuild();
-    var night = todN >= 0.5, A = { pl: Acc(), em: Acc(), cr: Acc(), win: {} }, i, L2 = SC.list, redP = [], glowP = [], anim = []; GL.anim = anim;
+    var night = todN >= 0.5 || !!todG, A = { pl: Acc(), em: Acc(), cr: Acc(), win: {} }, i, L2 = SC.list, redP = [], glowP = [], anim = []; GL.anim = anim;
     var cenX = GL.cen[0], cenY = GL.cen[1];
     function WA(seed) { return A.win[seed] || (A.win[seed] = Acc()); }
     function faceTo(x, y) { return Math.atan2(cenY - y, cenX - x); }
