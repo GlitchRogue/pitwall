@@ -3918,6 +3918,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     glStands(W, S, N, hw, todN);
     glLights(W, S, N, hw, !!(todN || todG), !!todN);
     glLandmarks(W, S, N, hw, wet, todN, todG);
+    glGantry(W, hw, todN);
   }
 
   function glTrees(W, S, N, hw, wet, todN) {
@@ -4402,6 +4403,29 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     }
   }
   function glAnim(t) { for (var i = 0; i < GL.anim.length; i++) GL.anim[i](t); }
+
+  /* the start gantry with its five pairs of red lights, driven by the real start sequence (LITN) */
+  function glGantry(W, hw, todN) {
+    var p0 = trackPose(START_D), X = p0.x * MPP, Y = p0.y * MPP, c = Math.cos(p0.a), n = Math.sin(p0.a), rot = -p0.a, A = Acc();
+    function P(off, d) { return [X - n * off + c * d, Y + c * off + n * d]; }
+    [-1, 1].forEach(function (sd) { var q = P(sd * (hw + 1.8), 0); accBox(A, q[0], 3.7, q[1], 0.8, 7.4, 0.8, lin([38, 41, 48]), 4, rot); });
+    var m = P(0, 0); accBox(A, m[0], 7.9, m[1], 1.4, 1.4, 2 * (hw + 2.2), lin([44, 48, 56]), 4, rot);
+    accBox(A, m[0], 6.9, m[1], 0.8, 0.6, 2 * (hw + 2.2), lin([22, 24, 28]), 4, rot);
+    var mesh = new THREE.Mesh(accGeo(A), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.4 })); mesh.castShadow = true; W.add(mesh);
+    var pods = Acc(), lamps = [], sprs = [], pi, li;
+    for (pi = 0; pi < 5; pi++) {
+      var po = (pi - 2) * 2.4, q = P(po, 0); accBox(pods, q[0], 5.8, q[1], 0.6, 1.8, 1.6, lin([14, 15, 18]), 4, rot);
+      for (li = 0; li < 2; li++) {
+        var lp = P(po, -0.36), mat = new THREE.MeshBasicMaterial({ color: 0x2a0b0b, toneMapped: false }), lm = new THREE.Mesh(new THREE.CircleGeometry(0.34, 20), mat);
+        lm.position.set(lp[0], li ? 5.5 : 6.1, lp[1]); lm.rotation.y = Math.PI / 2 - p0.a + Math.PI; lm.rotation.y = -p0.a - Math.PI / 2; W.add(lm); lamps.push({ mat: mat, idx: pi });
+        var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texGlow(), color: 0xff2a1a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false })); sp.scale.set(3.2, 3.2, 1); sp.position.set(lp[0] - c * 0.3, li ? 5.5 : 6.1, lp[1] - n * 0.3); sp.visible = false; W.add(sp); sprs.push(sp);
+      }
+    }
+    W.add(new THREE.Mesh(accGeo(pods), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 })));
+    GL.anim.push(function () {
+      for (var i = 0; i < lamps.length; i++) { var on = lamps[i].idx < LITN; lamps[i].mat.color.set(on ? 0xff3322 : 0x2a0b0b); sprs[i].visible = on; }
+    });
+  }
 
 
   /* ---------- UI helpers ---------- */
