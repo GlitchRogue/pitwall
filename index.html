@@ -3514,7 +3514,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       cluster(a0 + 0.25, 2.4, 28, 190, 700, 40, 130, ['box', 'slab', 'stepped']);
       hero('needle', a0 - 0.5, 300, 40, 310, {}); hero('oldcity', a0 + 0.95, 150, 240, 60, {});
       cluster(a0 - 0.9, 1.0, 8, 160, 420, 30, 80, ['box', 'slab']);
-    } else if (id === 'mc-1929') {
+    } else if (id === 'mc-1929-old') {
       cluster(a0 + 0.4, 1.9, 22, 90, 360, 40, 120, ['box', 'slab', 'stepped']);
       for (i = 0; i < 9; i++) { var yp = scPlace(a0 - 0.5 + (rn() - 0.5) * 1.2, 40 + rn() * 130); L2.push({ k: 'spr', x: yp.x, y: yp.y, w: 36, h: 15, img: scSprite('yacht', night) }); }
       hero('town', a0 + 1.4, 160, 150, 38, {});
@@ -3534,7 +3534,10 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   var SKY = ['box', 'slab', 'stepped', 'spire', 'round'], LOW = ['box', 'slab', 'stepped'];
   var SC_EXTRA = {
     'mc-1929': function (hero, cluster, lights, hA, hT, a0, rn, night) {
-      cluster(a0 + 0.4, 2.0, 30, 70, 420, 36, 110, LOW); hero('casino', a0 + 1.0, 55, 70, 40, {}); hero('water', a0 - 0.5, 30, 360, 200, {});
+      cluster(a0 + 1.2, 1.8, 30, 70, 420, 36, 110, LOW); hero('casino', a0 + 1.6, 55, 70, 40, {});
+      var th = a0 - 0.6; hero('water', th, 340, 1500, 640, { rot: -(th + Math.PI / 2) }); 
+      var q; for (q = 0; q < 46; q++) hero(q % 5 === 0 ? 'sail' : 'yacht', th + (rn() - 0.5) * 0.5, 30 + rn() * 260, 14 + rn() * 26, 8, { ph: rn() * 6.28, yaw: rn() * 6.28 });
+      for (q = 0; q < 4; q++) hero('ship', th + (rn() - 0.5) * 1.2, 500 + rn() * 600, 130 + rn() * 100, 40, { yaw: rn() * 6.28 });
       hero('palace', a0 + 1.7, 200, 150, 60, {}); if (night) lights(80, 60, 700);
     },
     'it-1922': function (hero, cluster, lights, hA, hT) { hT('stand', 0.02, -60, 120, 20, {}); },
@@ -3772,7 +3775,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
       r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
       GL.aniso = Math.min(8, r.capabilities.getMaxAnisotropy());
-      GL.r = r; GL.sc = new THREE.Scene(); GL.cam = new THREE.PerspectiveCamera(60, 1.6, 0.4, 9000);
+      GL.r = r; GL.sc = new THREE.Scene(); GL.cam = new THREE.PerspectiveCamera(60, 1.6, 0.6, 9000);
       GL.cv.addEventListener('webglcontextlost', function (e) { e.preventDefault(); GL.st = 2; });
       GL.pm = new THREE.PMREMGenerator(r);
       GL.st = 1;
@@ -3836,41 +3839,41 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     var cWhite = lin([236, 236, 240]), cRed = lin([214, 35, 30]);
     var roadTint = wet ? lin([70, 74, 82]) : lin([150, 152, 158]);
     /* run-off */
-    var A1 = Acc(); ribbon(A1, -hw - 8, -hw, 0.004, function () { return wet ? lin([60, 64, 72]) : lin([128, 130, 138]); }, 5); ribbon(A1, hw, hw + 8, 0.004, function () { return wet ? lin([60, 64, 72]) : lin([128, 130, 138]); }, 5);
+    var A1 = Acc(); ribbon(A1, -hw - 8, -hw, 0.0, function () { return wet ? lin([60, 64, 72]) : lin([128, 130, 138]); }, 5); ribbon(A1, hw, hw + 8, 0.0, function () { return wet ? lin([60, 64, 72]) : lin([128, 130, 138]); }, 5);
     var mRun = new THREE.MeshStandardMaterial({ map: texAsphalt(), vertexColors: true, roughness: wet ? 0.35 : 0.95, metalness: 0, envMapIntensity: wet ? 0.8 : 0.15 });
     var mesh1 = new THREE.Mesh(accGeo(A1), mRun); mesh1.receiveShadow = true; W.add(mesh1);
     /* road surface, in two shades of tarmac every 24 m */
-    var A2 = Acc(); ribbon(A2, -hw, hw, 0.012, function (i2) { return ((Math.floor(S[i2].m / 24) % 2) ? roadTint : [roadTint[0] * 0.92, roadTint[1] * 0.92, roadTint[2] * 0.93]); }, 5);
+    var A2 = Acc(); ribbon(A2, -hw, hw, 0.03, function (i2) { return ((Math.floor(S[i2].m / 24) % 2) ? roadTint : [roadTint[0] * 0.92, roadTint[1] * 0.92, roadTint[2] * 0.93]); }, 5);
     var mRoad = new THREE.MeshStandardMaterial({ map: texAsphalt(), vertexColors: true, roughness: wet ? 0.22 : 0.88, metalness: wet ? 0.1 : 0, envMapIntensity: wet ? 1.0 : 0.2 });
     var mesh2 = new THREE.Mesh(accGeo(A2), mRoad); mesh2.receiveShadow = true; W.add(mesh2);
     /* grip lines and rubber */
-    var A3 = Acc(); ribbon(A3, -3.6, -0.5, 0.02, null, 6.2, 8); ribbon(A3, 0.5, 3.6, 0.02, null, 6.2, 8); ribbon(A3, -1.6, 1.6, 0.021, null, 3.2, 8);
+    var A3 = Acc(); ribbon(A3, -3.6, -0.5, 0.05, null, 6.2, 8); ribbon(A3, 0.5, 3.6, 0.05, null, 6.2, 8); ribbon(A3, -1.6, 1.6, 0.052, null, 3.2, 8);
     var mRub = new THREE.MeshBasicMaterial({ map: texLine(), transparent: true, opacity: wet ? 0.12 : 0.22, color: 0x000000, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, fog: true });
     W.add(new THREE.Mesh(accGeo(A3), mRub));
     /* edge lines and kerbs */
-    var A4 = Acc(); ribbon(A4, -hw, -hw + 0.3, 0.03, function () { return cWhite; }, 1); ribbon(A4, hw - 0.3, hw, 0.03, function () { return cWhite; }, 1);
+    var A4 = Acc(); ribbon(A4, -hw, -hw + 0.3, 0.07, function () { return cWhite; }, 1); ribbon(A4, hw - 0.3, hw, 0.07, function () { return cWhite; }, 1);
     var mLine = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: wet ? 0.3 : 0.8, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     W.add(new THREE.Mesh(accGeo(A4), mLine));
     var A5 = Acc(); function kc(i2) { return (Math.floor(S[i2].m / 3.2) % 2) ? cRed : cWhite; }
-    ribbon(A5, hw, hw + 1.8, 0.05, kc, 1.8, 3.2, function (i2) { return S[i2].k; }); ribbon(A5, -hw - 1.8, -hw, 0.05, kc, 1.8, 3.2, function (i2) { return S[i2].k; });
+    ribbon(A5, hw, hw + 1.8, 0.08, kc, 1.8, 3.2, function (i2) { return S[i2].k; }); ribbon(A5, -hw - 1.8, -hw, 0.08, kc, 1.8, 3.2, function (i2) { return S[i2].k; });
     var mKerb = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
     var mk = new THREE.Mesh(accGeo(A5), mKerb); mk.receiveShadow = true; W.add(mk);
     /* grass in mown stripes, and sand where there is a run-off area */
     var A6 = Acc(), gA = wet ? lin([40, 78, 48]) : lin([112, 160, 86]), gB = wet ? lin([34, 68, 42]) : lin([90, 134, 70]);
     function gc(i2) { return (Math.floor(S[i2].m / 26) % 2) ? gA : gB; }
-    for (var sd = -1; sd <= 1; sd += 2) { ribbon(A6, sd > 0 ? hw + 8 : -hw - 120, sd > 0 ? hw + 120 : -hw - 8, -0.012, gc, 6, 6, function (i2) { return !S[i2].k; }); }
+    for (var sd = -1; sd <= 1; sd += 2) { ribbon(A6, sd > 0 ? hw + 8 : -hw - 120, sd > 0 ? hw + 120 : -hw - 8, -0.12, gc, 6, 6, function (i2) { return !S[i2].k; }); }
     var mGr = new THREE.MeshStandardMaterial({ map: texGrass(), vertexColors: true, roughness: 1, metalness: 0 });
     var mg = new THREE.Mesh(accGeo(A6), mGr); mg.receiveShadow = true; W.add(mg);
     var A7 = Acc(), sandC = wet ? lin([110, 100, 80]) : lin([200, 186, 150]);
-    ribbon(A7, hw + 8, hw + 46, -0.008, function () { return sandC; }, 6, 6, function (i2) { return S[i2].k; }); ribbon(A7, -hw - 46, -hw - 8, -0.008, function () { return sandC; }, 6, 6, function (i2) { return S[i2].k; });
-    ribbon(A7, hw + 46, hw + 120, -0.012, gc, 6, 6, function (i2) { return S[i2].k; }); ribbon(A7, -hw - 120, -hw - 46, -0.012, gc, 6, 6, function (i2) { return S[i2].k; });
+    ribbon(A7, hw + 8, hw + 46, -0.1, function () { return sandC; }, 6, 6, function (i2) { return S[i2].k; }); ribbon(A7, -hw - 46, -hw - 8, -0.1, function () { return sandC; }, 6, 6, function (i2) { return S[i2].k; });
+    ribbon(A7, hw + 46, hw + 120, -0.12, gc, 6, 6, function (i2) { return S[i2].k; }); ribbon(A7, -hw - 120, -hw - 46, -0.12, gc, 6, 6, function (i2) { return S[i2].k; });
     var mSa = new THREE.MeshStandardMaterial({ map: texSand(), vertexColors: true, roughness: 1 });
     var ms = new THREE.Mesh(accGeo(A7), mSa); ms.receiveShadow = true; W.add(ms);
     /* ground */
     var gt = texGrass().clone(); gt.repeat.set(1500, 1500); gt.needsUpdate = true; gt.wrapS = gt.wrapT = THREE.RepeatWrapping;
     var cenX = 0, cenY = 0; for (i = 0; i < N; i++) { cenX += S[i].x; cenY += S[i].y; } cenX /= N; cenY /= N;
     var gm = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshStandardMaterial({ map: gt, color: DESERT_IDS[CUR.id] ? (wet ? 0x8a7a5a : 0xd8c294) : (wet ? 0x486a4e : 0x78a060), roughness: 1 }));
-    gm.rotation.x = -Math.PI / 2; gm.position.set(cenX, -0.04, cenY); gm.receiveShadow = true; W.add(gm);
+    gm.rotation.x = -Math.PI / 2; gm.position.set(cenX, -0.35, cenY); gm.receiveShadow = true; W.add(gm);
     if (DESERT_IDS[CUR.id]) { var sandT = texSand().clone(); sandT.repeat.set(1500, 1500); sandT.needsUpdate = true; sandT.wrapS = sandT.wrapT = THREE.RepeatWrapping; gm.material.map = sandT; gm.material.color.set(wet ? 0x9a8a6a : 0xf0dcb0); }
     /* walls, striped, on both sides */
     var A8 = Acc(), wcA = lin([190, 195, 202]), wcB = lin([76, 80, 88]), wcT = lin([220, 224, 230]);
@@ -3903,7 +3906,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     var sIdx = Math.max(0, Math.min(N - 2, Math.round(((START_D % L + L) % L) / L * N))), A10 = Acc();
     for (j = 0; j < 8; j++) for (var rr = 0; rr < 2; rr++) {
       var o0 = -hw + j * hw / 4, o1 = o0 + hw / 4, cc2 = ((j + rr) % 2) ? lin([12, 12, 14]) : lin([244, 244, 244]), pp = S[sIdx], d0 = rr * 1.2, d1 = d0 + 1.2;
-      function SP(o, d) { return [pp.x - pp.n * o + pp.c * d, 0.035, pp.y + pp.c * o + pp.n * d]; }
+      function SP(o, d) { return [pp.x - pp.n * o + pp.c * d, 0.09, pp.y + pp.c * o + pp.n * d]; }
       accQuad(A10, SP(o0, d0), SP(o1, d0), SP(o1, d1), SP(o0, d1), [0, 1, 0], cc2, [0, 0], [1, 0], [1, 1], [0, 1]);
     }
     var mSt = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }); W.add(new THREE.Mesh(accGeo(A10), mSt));
@@ -3956,9 +3959,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     function PE(i, o, z) { var p = pts[i]; return [p.x - Math.sin(p.a) * o, z, p.y + Math.cos(p.a) * o]; }
     var pc = wet ? lin([58, 62, 70]) : lin([118, 120, 126]), lw = lin([236, 236, 240]);
     for (k = 0; k < pts.length - 1; k++) {
-      accQuad(A, PE(k, -5.2, 0.02), PE(k, 5.2, 0.02), PE(k + 1, 5.2, 0.02), PE(k + 1, -5.2, 0.02), [0, 1, 0], pc, [0, k * 8 / 5], [2, k * 8 / 5], [2, (k + 1) * 8 / 5], [0, (k + 1) * 8 / 5]);
-      accQuad(A, PE(k, -5.2, 0.03), PE(k, -4.9, 0.03), PE(k + 1, -4.9, 0.03), PE(k + 1, -5.2, 0.03), [0, 1, 0], lw, [0, 0], [1, 0], [1, 1], [0, 1]);
-      accQuad(A, PE(k, 4.9, 0.03), PE(k, 5.2, 0.03), PE(k + 1, 5.2, 0.03), PE(k + 1, 4.9, 0.03), [0, 1, 0], lw, [0, 0], [1, 0], [1, 1], [0, 1]);
+      accQuad(A, PE(k, -5.2, 0.04), PE(k, 5.2, 0.04), PE(k + 1, 5.2, 0.04), PE(k + 1, -5.2, 0.04), [0, 1, 0], pc, [0, k * 8 / 5], [2, k * 8 / 5], [2, (k + 1) * 8 / 5], [0, (k + 1) * 8 / 5]);
+      accQuad(A, PE(k, -5.2, 0.07), PE(k, -4.9, 0.07), PE(k + 1, -4.9, 0.07), PE(k + 1, -5.2, 0.07), [0, 1, 0], lw, [0, 0], [1, 0], [1, 1], [0, 1]);
+      accQuad(A, PE(k, 4.9, 0.07), PE(k, 5.2, 0.07), PE(k + 1, 5.2, 0.07), PE(k + 1, 4.9, 0.07), [0, 1, 0], lw, [0, 0], [1, 0], [1, 1], [0, 1]);
     }
     var mp = new THREE.Mesh(accGeo(A), new THREE.MeshStandardMaterial({ map: texAsphalt(), vertexColors: true, roughness: wet ? 0.3 : 0.9, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); mp.receiveShadow = true; W.add(mp);
     /* garage block: a long low building behind the lane, with lit doors */
@@ -4050,6 +4053,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     /* camera from the 2D rig */
     cam.fov = 2 * Math.atan((th / 2) / (CM.f * th / H)) * 180 / Math.PI; cam.updateProjectionMatrix();
     cam.position.set(CM.X, CM.Z, CM.Y); cam.up.set(CM.ux, CM.uz, CM.uy); cam.lookAt(CM.X + CM.fx, CM.Z + CM.fz, CM.Y + CM.fy);
+    if (GL.dbgCam) { cam.position.fromArray(GL.dbgCam.p); cam.lookAt(GL.dbgCam.t[0], GL.dbgCam.t[1], GL.dbgCam.t[2]); }
     GL.sky.position.copy(cam.position);
     /* sun follows the focus car so the shadow map stays sharp */
     var lp = carPose(lead), lx = lp.x * MPP, ly = lp.y * MPP;
@@ -4344,7 +4348,14 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
         var bs = new THREE.Mesh(new THREE.SphereGeometry(55, 24, 16), new THREE.MeshStandardMaterial({ color: 0xcfd8e4, transparent: true, opacity: 0.28, roughness: 0.1, metalness: 0.5, emissive: night ? 0x445a88 : 0x000000 })); bs.position.set(x, 56, z); W.add(bs);
         var bw = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(55.5, 2)), new THREE.LineBasicMaterial({ color: night ? 0xa8c8ff : 0xffffff })); bw.position.copy(bs.position); W.add(bw);
       } else if (k === 'water') {
-        var wmesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ color: night ? 0x0c1c30 : wet ? 0x2c5068 : 0x2a6a8c, roughness: 0.06, metalness: 0.7, envMapIntensity: 1.6 })); wmesh.rotation.x = -Math.PI / 2; wmesh.position.set(x, -0.02, z); wmesh.rotation.z = (x * 0.01) % 3; W.add(wmesh);
+        var wmesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ color: night ? 0x0c1c30 : wet ? 0x2c5068 : 0x2a6a8c, roughness: 0.06, metalness: 0.7, envMapIntensity: 1.6 })); wmesh.rotation.x = -Math.PI / 2; wmesh.position.set(x, -0.2, z); wmesh.rotation.z = e.rot != null ? e.rot : (x * 0.01) % 3; W.add(wmesh);
+      } else if (k === 'yacht' || k === 'sail' || k === 'ship') {
+        var L3 = k === 'ship' ? w : w, wd = k === 'ship' ? L3 * 0.16 : L3 * 0.26, hh3 = k === 'ship' ? L3 * 0.14 : L3 * 0.18, yw = e.yaw || 0, hc2 = lin([246, 247, 250]);
+        accBox(A.pl, x, hh3 * 0.35, z, L3, hh3 * 0.7, wd, k === 'ship' ? lin([30, 44, 80]) : hc2, 6, yw);
+        accBox(A.pl, x, hh3 * 0.8, z, L3 * 0.8, hh3 * 0.5, wd * 0.85, hc2, 6, yw);
+        if (k === 'sail') { accBox(A.pl, x, L3 * 0.5, z, 0.3, L3, 0.3, lin([200, 200, 205]), 4, 0); accBox(A.pl, x - Math.cos(yw) * L3 * 0.05, L3 * 0.5, z + Math.sin(yw) * L3 * 0.05, L3 * 0.5, L3 * 0.85, 0.12, lin([250, 250, 252]), 4, yw); }
+        else { accBox(A.pl, x, hh3 * 1.25, z, L3 * 0.45, hh3 * 0.5, wd * 0.7, hc2, 6, yw); if (k === 'ship') accBox(A.pl, x, hh3 * 1.8, z, L3 * 0.25, hh3 * 0.5, wd * 0.5, hc2, 6, yw); }
+        if (night) { accBox(A.em, x, hh3 * 0.82, z, L3 * 0.82, hh3 * 0.12, wd * 0.88, lin([255, 214, 140]), 4, yw); lampDot(x, hh3 * 1.5, z, [1, 0.85, 0.6]); }
       } else if (k === 'stand') {
         accBox(A.pl, x, 5, z, w, 10, 18, lin([150, 154, 162]), 6, -rot); accBox(A.cr, x, 11, z, w * 0.98, 6, 0.3, [1, 1, 1], 8, -rot); accBox(A.pl, x, 14, z, w, 0.5, 20, lin([210, 214, 222]), 6, -rot);
       } else if (k === 'wing') {
